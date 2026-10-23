@@ -24,10 +24,14 @@ export function BusesPage() {
   }
 
   return (
-    <OperatorTemplate title="Buses">
+    <OperatorTemplate title="Buses" context="fleet">
       <PageHeader
         title="Buses"
-        subtitle={`${buses.length} buses in the fleet · ${active} active`}
+        subtitle={
+          <>
+            {buses.length} buses<span className="hidden lg:inline"> in the fleet</span> · {active} active
+          </>
+        }
         action={
           <Button aria-expanded={open} onClick={() => setOpen((o) => !o)} className="w-full md:w-auto">
             Add bus

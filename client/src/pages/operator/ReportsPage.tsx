@@ -106,7 +106,21 @@ export function ReportsPage() {
           <Heading as="h2" size="sm" id="rp-route-h" className="mb-2.5 text-lg md:text-[19px]">
             By route
           </Heading>
-          <div className="overflow-x-auto">
+          {/* Phones: one line per route, as in the phone design. */}
+          <ul className="m-0 list-none p-0 md:hidden">
+            {r.byRoute.map((x) => (
+              <li key={x.route} className="flex items-center justify-between gap-3 border-b border-sunken py-2.5 last:border-b-0">
+                <div className="min-w-0">
+                  <p className="m-0 font-semibold">{x.route}</p>
+                  <p className="m-0 text-[13px] text-muted">
+                    {x.trips} trips · {x.fill}% seat fill
+                  </p>
+                </div>
+                <strong className="shrink-0">{cedis(x.revenue, { whole: true })}</strong>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[420px] border-collapse text-[15px]">
               <thead>
                 <tr className="text-left text-[13px] uppercase tracking-[0.05em] text-muted">

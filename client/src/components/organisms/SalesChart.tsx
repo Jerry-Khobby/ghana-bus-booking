@@ -89,7 +89,7 @@ export function SalesChart({ days, caption }: SalesChartProps) {
             <div
               role="list"
               aria-label="Tickets sold per day, online and walk-in"
-              className={cx('relative flex h-full items-end border-b border-line-strong px-1', many ? 'gap-[3px]' : 'gap-2.5 md:gap-3.5')}
+              className={cx('relative flex h-full items-end border-b border-line-strong pl-1 pr-8', many ? 'gap-[3px]' : 'gap-2.5 md:gap-3.5')}
             >
               {days.map((d, i) => {
                 const total = d.online + d.walkIn
@@ -136,7 +136,7 @@ export function SalesChart({ days, caption }: SalesChartProps) {
               })}
             </div>
           </div>
-          <div aria-hidden="true" className={cx('mt-1.5 flex px-1 text-[12px] text-muted md:text-[13px]', many ? 'gap-[3px]' : 'gap-2.5 md:gap-3.5')}>
+          <div aria-hidden="true" className={cx('mt-1.5 flex pl-1 pr-8 text-[12px] text-muted md:text-[13px]', many ? 'gap-[3px]' : 'gap-2.5 md:gap-3.5')}>
             {days.map((d, i) => (
               <span key={d.date} className="flex-1 text-center">
                 {/* With 30 days, label every 5th to avoid collisions. */}

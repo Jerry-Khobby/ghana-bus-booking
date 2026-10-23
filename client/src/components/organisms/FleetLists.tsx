@@ -4,7 +4,7 @@ import { Badge, ButtonLink, TextInput } from '@/components/atoms'
 import { MiniSeatPlan } from '@/components/molecules'
 import type { Bus, LayoutRecord, RouteRecord, StationAgent } from '@/data/types'
 import { buildRows } from '@/lib/seats'
-import { ResponsiveTable, RowCard } from './ResponsiveTable'
+import { ResponsiveTable, RowCard, StackedCell } from './ResponsiveTable'
 
 /* ---------- Buses ---------- */
 
@@ -46,6 +46,11 @@ export function BusesTable({ buses, layouts }: { buses: Bus[]; layouts: LayoutRe
         { header: 'Seat layout', cell: (b) => layoutLink(b, layoutText(b)) },
         { header: 'Status', cell: status },
         { header: 'Next trip', cell: (b) => b.next, className: 'text-muted' },
+      ]}
+      tabletColumns={[
+        { header: 'Bus', cell: (b) => <StackedCell mono title={b.plate} detail={`${shortType(b.type)} · ${b.next}`} /> },
+        { header: 'Layout', cell: (b) => layoutLink(b, layoutText(b), 'inline-flex min-h-11 items-center font-semibold') },
+        { header: 'Status', cell: status },
       ]}
       card={(b) => (
         <RowCard className="gap-1.5">
@@ -117,6 +122,11 @@ export function RoutesFaresTable({ routes, fares, onFareChange }: RoutesFaresPro
         { header: 'Trips today', cell: (r) => r.tripsToday },
         { header: 'Base fare (GH¢)', cell: (r) => fareInput(r, '!h-11 w-[120px] rounded-lg px-2.5'), className: 'py-2' },
       ]}
+      tabletColumns={[
+        { header: 'Route', cell: (r) => <StackedCell title={r.name} detail={r.stations} /> },
+        { header: 'Trips today', cell: (r) => r.tripsToday },
+        { header: 'Base fare (GH¢)', cell: (r) => fareInput(r, '!h-11 w-[110px] rounded-lg px-2.5'), className: 'py-2' },
+      ]}
       card={(r) => (
         <RowCard className="flex-row items-center gap-3">
           <div className="min-w-0 flex-1">
@@ -174,6 +184,7 @@ export function AgentsTable({ agents, sent, onSend }: AgentsTableProps) {
       rows={agents}
       rowKey={(a) => a.id}
       minWidth={760}
+      cardsBelow="lg"
       columns={[
         {
           header: 'Agent',
@@ -199,8 +210,12 @@ export function AgentsTable({ agents, sent, onSend }: AgentsTableProps) {
             <p className="m-0 text-sm text-muted">
               {a.station} · bays {a.bays}
             </p>
-            <p className="m-0 text-[13px] text-muted [overflow-wrap:anywhere]">{a.email}</p>
-            <p className="m-0 text-[13px] text-muted">Last active: {a.lastActive}</p>
+            {/* Phones list email and last active on separate lines; tablets join them. */}
+            <p className="m-0 text-[13px] text-muted wrap-anywhere md:hidden">{a.email}</p>
+            <p className="m-0 text-[13px] text-muted md:hidden">Last active: {a.lastActive}</p>
+            <p className="m-0 hidden text-[13px] text-muted md:block">
+              {a.email} · {a.lastActive}
+            </p>
           </div>
           {action(a)}
         </RowCard>

@@ -18,12 +18,14 @@ const items: Array<{ to: string; label: string; short: string; icon: IconName; e
 interface OperatorNavProps {
   operator: string
   title: string
+  /** What the page is about, after the operator name in the phone bar: "today", "fleet", "trips". */
+  context?: string
   /** Phone header shows a back arrow to this page instead of the menu button. */
   back?: { to: string; label: string }
 }
 
 /** Sidebar on desktop, icon rail on tablet, collapsible top bar on phones. */
-export function OperatorNav({ operator, title, back }: OperatorNavProps) {
+export function OperatorNav({ operator, title, context = 'today', back }: OperatorNavProps) {
   const [open, setOpen] = useState(false)
   const { signOutStaff } = useAuth()
   const navigate = useNavigate()
@@ -111,7 +113,7 @@ export function OperatorNav({ operator, title, back }: OperatorNavProps) {
           )}
           <div className="min-w-0 flex-1">
             <p className="m-0 font-display text-[17px] font-extrabold leading-tight">{title}</p>
-            {!back && <p className="m-0 text-xs text-on-dark">{operator} · today</p>}
+            {!back && <p className="m-0 text-xs text-on-dark">{operator} · {context}</p>}
           </div>
         </div>
         {open && !back && (

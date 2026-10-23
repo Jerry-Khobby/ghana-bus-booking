@@ -32,7 +32,12 @@ export function AgentsPage() {
   return (
     <OperatorTemplate title="Agents">
       <PageHeader
-        title="Agents"
+        title={
+          <>
+            <span className="lg:hidden">Station agents</span>
+            <span className="hidden lg:inline">Agents</span>
+          </>
+        }
         subtitle="People who sell walk-in seats and scan tickets at your bays"
         action={
           <Button aria-expanded={open} onClick={() => setOpen((o) => !o)} className="w-full md:w-auto">

@@ -30,6 +30,7 @@ export function TripsPage() {
   return (
     <OperatorTemplate
       title="Trips"
+      context="trips"
       mobileAction={
         <ButtonLink to="/operator/trips/new" size="lg" block>
           New trip
@@ -40,9 +41,9 @@ export function TripsPage() {
         title="Trips"
         subtitle="Scheduled and fill-and-go trips across all routes"
         action={
-          <ButtonLink to="/operator/trips/new" className="hidden md:inline-flex">
-            New trip
-          </ButtonLink>
+          <div className="hidden md:block">
+            <ButtonLink to="/operator/trips/new">New trip</ButtonLink>
+          </div>
         }
       />
 
@@ -83,7 +84,12 @@ export function TripsPage() {
         footer={
           date === 'tomorrow'
             ? 'No trips published for tomorrow yet.'
-            : `${plural(shown.length, 'trip')} shown · Departed and full trips are locked and cannot be edited.`
+            : (
+                <>
+                  {plural(shown.length, 'trip')} shown · Departed and full trips are locked
+                  <span className="hidden lg:inline"> and cannot be edited</span>.
+                </>
+              )
         }
       />
     </OperatorTemplate>

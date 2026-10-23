@@ -1,9 +1,10 @@
+import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { Heading, ProgressBar } from '@/components/atoms'
 import { TripStatusBadge } from '@/components/molecules'
 import type { OperatorTrip, TripStatus } from '@/data/types'
 import { cedis } from '@/lib/format'
-import { ResponsiveTable, RowCard, type Column } from './ResponsiveTable'
+import { ResponsiveTable, RowCard, StackedCell, type Column } from './ResponsiveTable'
 
 export interface OperatorTripRow extends OperatorTrip {
   revenue?: number
@@ -40,7 +41,7 @@ interface TripsTableProps {
   rows: OperatorTripRow[]
   /** `overview` shows revenue; `manage` shows bay and an Edit link. */
   variant?: 'overview' | 'manage'
-  footer?: string
+  footer?: ReactNode
 }
 
 /** Today's trips: a table from tablet up, stacked cards on phones. */
@@ -68,12 +69,34 @@ export function TripsTable({ rows, variant = 'overview', footer }: TripsTablePro
       : { header: 'Revenue', cell: (t: OperatorTripRow) => cedis(t.revenue ?? t.sold * t.fare), className: 'text-right' },
   ]
 
+  // Tablet: route, plate and departure share one "Trip" cell; the sold bar becomes a count.
+  const tabletColumns: Column<OperatorTripRow>[] = [
+    {
+      header: 'Trip',
+      cell: (t) => (
+        <StackedCell
+          title={t.route}
+          detail={
+            <>
+              <span className="font-mono">{t.plate}</span> · {t.when}
+              {manage ? ` · Bay ${t.bay}` : ''}
+            </>
+          }
+        />
+      ),
+    },
+    { header: 'Status', cell: (t) => <TripStatusBadge status={t.status} label={tripStatusText[t.status]} /> },
+    { header: 'Sold', cell: (t) => `${t.sold}/${t.capacity}`, className: 'font-mono text-sm' },
+    columns[columns.length - 1],
+  ]
+
   return (
     <ResponsiveTable
       label="Trips"
       rows={rows}
       rowKey={(t) => t.id}
       columns={columns}
+      tabletColumns={tabletColumns}
       minWidth={manage ? 760 : 680}
       header={
         manage ? undefined : (

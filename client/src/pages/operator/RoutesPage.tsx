@@ -52,7 +52,12 @@ export function RoutesPage() {
     <OperatorTemplate title="Routes and fares" mobileAction={saveButton}>
       <PageHeader
         title="Routes and fares"
-        subtitle="Base fares fill in automatically when you create a trip."
+        subtitle={
+          <>
+            <span className="lg:hidden">Base fares fill in when you create a trip</span>
+            <span className="hidden lg:inline">Base fares fill in automatically when you create a trip.</span>
+          </>
+        }
         action={
           <Button aria-expanded={open} onClick={() => setOpen((o) => !o)} className="w-full md:w-auto">
             Add route
@@ -86,7 +91,10 @@ export function RoutesPage() {
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="m-0 text-sm text-muted">New fares apply to trips created after you save. Tickets already sold keep their price.</p>
+        <p className="m-0 text-sm text-muted">
+          New fares apply to trips created after you save. <span className="lg:hidden">Sold tickets keep their price.</span>
+          <span className="hidden lg:inline">Tickets already sold keep their price.</span>
+        </p>
         <div className="hidden md:block">{saveButton}</div>
       </div>
     </OperatorTemplate>

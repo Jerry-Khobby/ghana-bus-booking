@@ -30,7 +30,10 @@ export function OperatorOverviewPage() {
     >
       <div className="hidden flex-wrap items-end justify-between gap-4 md:flex">
         <div>
-          <p className="m-0 text-sm text-muted">Today</p>
+          <p className="m-0 text-sm text-muted">
+            <span className="lg:hidden">Coastline Express · today</span>
+            <span className="hidden lg:inline">Today</span>
+          </p>
           <Heading as="h1" size="xl">
             Overview
           </Heading>

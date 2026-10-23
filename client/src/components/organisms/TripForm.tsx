@@ -20,11 +20,26 @@ export interface TripDraft {
   openOnline: boolean
 }
 
+/**
+ * "Accra → Kumasi" with stations "Circle → Asafo" reads "Accra (Circle) → Kumasi (Asafo)".
+ * A "<city> main" station is the obvious one, so it is left out.
+ */
+export function routeLabel(route: { name: string; stations: string }): string {
+  const cities = route.name.split('→').map((s) => s.trim())
+  const stops = route.stations.split('→').map((s) => s.trim())
+  return cities
+    .map((city, i) => {
+      const stop = stops[i]
+      return stop && stop !== city && stop !== `${city} main` ? `${city} (${stop})` : city
+    })
+    .join(' → ')
+}
+
 interface TripFormProps {
   draft: TripDraft
   onChange: (draft: TripDraft) => void
   onSubmit: () => void
-  routes: Array<{ id: string; name: string; fare: number }>
+  routes: Array<{ id: string; name: string; stations: string; fare: number }>
   buses: Array<{ plate: string; label: string }>
   bays: number[]
   submitLabel: string
@@ -56,7 +71,7 @@ export function TripForm({ draft, onChange, onSubmit, routes, buses, bays, submi
     >
       <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
         <FormField id="nt-route" label="Route">
-          <Dropdown id="nt-route" labelledBy="nt-route-label" value={draft.routeId} options={routes.map((r) => ({ value: r.id, label: r.name }))} onChange={pickRoute} />
+          <Dropdown id="nt-route" labelledBy="nt-route-label" value={draft.routeId} options={routes.map((r) => ({ value: r.id, label: routeLabel(r) }))} onChange={pickRoute} />
         </FormField>
         <FormField id="nt-bus" label="Bus">
           <Dropdown id="nt-bus" labelledBy="nt-bus-label" value={draft.busPlate} options={buses.map((b) => ({ value: b.plate, label: b.label }))} onChange={(busPlate) => set({ busPlate })} />
@@ -69,7 +84,12 @@ export function TripForm({ draft, onChange, onSubmit, routes, buses, bays, submi
         </Eyebrow>
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <ChoiceCard title="At a fixed time" hint="Passengers book ahead" selected={draft.mode === 'scheduled'} onSelect={() => set({ mode: 'scheduled' })} />
-          <ChoiceCard title="When it is full" hint="Loads at the bay, fill and go" selected={draft.mode === 'fill'} onSelect={() => set({ mode: 'fill' })} />
+          <ChoiceCard title="When it is full" hint={
+              <>
+                <span className="lg:hidden">Fill and go at the bay</span>
+                <span className="hidden lg:inline">Loads at the bay, fill and go</span>
+              </>
+            } selected={draft.mode === 'fill'} onSelect={() => set({ mode: 'fill' })} />
         </div>
       </fieldset>
 
@@ -104,7 +124,8 @@ export function TripForm({ draft, onChange, onSubmit, routes, buses, bays, submi
 
       <label className="flex min-h-11 cursor-pointer items-center gap-3">
         <Checkbox className="size-5" checked={draft.openOnline} onChange={() => set({ openOnline: !draft.openOnline })} />
-        Open for online booking as soon as it is published
+        <span className="lg:hidden">Open for online booking when published</span>
+        <span className="hidden lg:inline">Open for online booking as soon as it is published</span>
       </label>
 
       {/* On phones these sit in the sticky bar instead. */}
@@ -152,7 +173,13 @@ export function TripPreview({ mode, when, plate, operator, busType, route, seats
         </div>
         <h2 className="m-0 font-display text-xl font-bold">{when}</h2>
         <p className="m-0 text-sm text-muted">
-          {operator} · {busType} · {route}
+          {/* Phones and tablets show the bus and seats here; desktop shows the route. */}
+          <span className="lg:hidden">
+            {operator} · {busType} · {plate} · {seats} seats left
+          </span>
+          <span className="hidden lg:inline">
+            {operator} · {busType} · {route}
+          </span>
         </p>
         <div className="h-2 rounded-full bg-sunken" aria-hidden="true" />
         <div className="flex items-center justify-between">

@@ -88,7 +88,7 @@ function TripEditor({ tripId }: { tripId: string | undefined }) {
   }
 
   return (
-    <OperatorTemplate title={title} mobileAction={<TripFormActions submitLabel={submitLabel} />}>
+    <OperatorTemplate title={title} context="trips" mobileAction={<TripFormActions submitLabel={submitLabel} />}>
       <PageHeader back={{ to: '/operator/trips', label: 'Trips' }} title={title} subtitle={existing ? `${existing.route} · ${existing.plate}` : undefined} />
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-6">
         <TripForm
