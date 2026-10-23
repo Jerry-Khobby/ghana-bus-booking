@@ -20,20 +20,20 @@ All screens were designed before any code was written. The design has 22 screens
 | 6 | Loading console | Station agent | `/agent` |
 | 7 | Scan ticket | Station agent | `/agent/scan` |
 | 8 | Overview | Operator | `/operator` |
-| 9 | Seat layout editor | Operator |  (or ) |
-| 10 | Sign in | Passenger |  |
-| 11 | Staff sign in | Agent, operator |  |
-| 12 | My tickets | Passenger |  (one ticket: ) |
-| 13 | Approve payment on phone | Passenger |  |
-| 14 | Payment failed | Passenger |  |
-| 15 | Sell walk-in seat | Station agent |  |
-| 16 | Trips | Operator |  |
-| 17 | New trip (and edit) | Operator | ,  |
-| 18 | Buses | Operator |  |
-| 19 | Seat layouts | Operator |  |
-| 20 | Routes and fares | Operator |  |
-| 21 | Agents | Operator |  |
-| 22 | Reports | Operator |  |
+| 9 | Seat layout editor | Operator | `/operator/layouts/:layoutId` (new: `/operator/layouts/new`) |
+| 10 | Sign in | Passenger | `/signin` |
+| 11 | Staff sign in | Agent, operator | `/staff/signin` |
+| 12 | My tickets | Passenger | `/tickets` (one ticket: `/ticket/:code`) |
+| 13 | Approve payment on phone | Passenger | `/trips/:tripId/pay/pending` |
+| 14 | Payment failed | Passenger | `/trips/:tripId/pay/failed` |
+| 15 | Sell walk-in seat | Station agent | `/agent/walk-in` |
+| 16 | Trips | Operator | `/operator/trips` |
+| 17 | New trip (and edit) | Operator | `/operator/trips/new`, `/operator/trips/:tripId/edit` |
+| 18 | Buses | Operator | `/operator/buses` |
+| 19 | Seat layouts | Operator | `/operator/layouts` |
+| 20 | Routes and fares | Operator | `/operator/routes` |
+| 21 | Agents | Operator | `/operator/agents` |
+| 22 | Reports | Operator | `/operator/reports` |
 
 ### Colours
 
@@ -47,7 +47,7 @@ The brand uses the Ghana flag colours. Ghana has no official colour standard for
 | `ink` | `#16201C` | Text and dark headers |
 | `canvas` | `#F6F5F1` | Page background |
 
-Red is kept off the seat map on purpose. Red and green side by side are hard to tell apart for colour-blind passengers, so taken seats are grey. White on green (about 6.6:1) and white on red (about 5.6:1) both pass WCAG AA contrast. Gold always sits under dark text. Report chart bars use a darker gold,  (), because the flag gold is too light on white for thin marks; every chart also has a table view.
+Red is kept off the seat map on purpose. Red and green side by side are hard to tell apart for colour-blind passengers, so taken seats are grey. White on green (about 6.6:1) and white on red (about 5.6:1) both pass WCAG AA contrast. Gold always sits under dark text. Report chart bars use a darker gold, `chart-gold` (`#D4A900`), because the flag gold is too light on white for thin marks; every chart also has a table view.
 
 ### Type
 
