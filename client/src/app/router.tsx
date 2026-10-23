@@ -1,28 +1,15 @@
-import { useEffect } from 'react'
+import { useEffect, type ComponentType } from 'react'
 import { Outlet, ScrollRestoration, useLocation, type RouteObject } from 'react-router'
-import { AgentConsolePage } from '@/pages/AgentConsolePage'
 import { HomePage } from '@/pages/HomePage'
 import { MyTicketsPage } from '@/pages/MyTicketsPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
-import { OperatorOverviewPage } from '@/pages/OperatorOverviewPage'
 import { PayFailedPage } from '@/pages/PayFailedPage'
 import { PayPendingPage } from '@/pages/PayPendingPage'
 import { PaymentPage } from '@/pages/PaymentPage'
 import { ResultsPage } from '@/pages/ResultsPage'
-import { ScanPage } from '@/pages/ScanPage'
-import { SeatLayoutPage } from '@/pages/SeatLayoutPage'
 import { SeatPage } from '@/pages/SeatPage'
 import { SignInPage } from '@/pages/SignInPage'
-import { StaffSignInPage } from '@/pages/StaffSignInPage'
 import { TicketPage } from '@/pages/TicketPage'
-import { AgentsPage } from '@/pages/operator/AgentsPage'
-import { BusesPage } from '@/pages/operator/BusesPage'
-import { LayoutsPage } from '@/pages/operator/LayoutsPage'
-import { ReportsPage } from '@/pages/operator/ReportsPage'
-import { RoutesPage } from '@/pages/operator/RoutesPage'
-import { TripEditorPage } from '@/pages/operator/TripEditorPage'
-import { TripsPage } from '@/pages/operator/TripsPage'
-import { WalkInPage } from '@/pages/WalkInPage'
 
 function Root() {
   const { hash, pathname } = useLocation()
@@ -38,6 +25,14 @@ function Root() {
       <Outlet />
     </>
   )
+}
+
+/**
+ * Staff pages load on demand, so passengers on mobile data never download
+ * the agent console or operator dashboard.
+ */
+function page<M extends Record<string, unknown>>(load: () => Promise<M>, name: keyof M) {
+  return async () => ({ Component: (await load())[name] as ComponentType })
 }
 
 /** Every page in the app. main.tsx turns this into the browser router. */
@@ -56,24 +51,24 @@ export const routes: RouteObject[] = [
       { path: '/ticket/:code', element: <TicketPage /> },
       { path: '/tickets', element: <MyTicketsPage /> },
       { path: '/signin', element: <SignInPage /> },
-      { path: '/staff/signin', element: <StaffSignInPage /> },
+      { path: '/staff/signin', lazy: page(() => import('@/pages/StaffSignInPage'), 'StaffSignInPage') },
 
       // Station agent
-      { path: '/agent', element: <AgentConsolePage /> },
-      { path: '/agent/scan', element: <ScanPage /> },
-      { path: '/agent/walk-in', element: <WalkInPage /> },
+      { path: '/agent', lazy: page(() => import('@/pages/AgentConsolePage'), 'AgentConsolePage') },
+      { path: '/agent/scan', lazy: page(() => import('@/pages/ScanPage'), 'ScanPage') },
+      { path: '/agent/walk-in', lazy: page(() => import('@/pages/WalkInPage'), 'WalkInPage') },
 
       // Operator
-      { path: '/operator', element: <OperatorOverviewPage /> },
-      { path: '/operator/trips', element: <TripsPage /> },
-      { path: '/operator/trips/new', element: <TripEditorPage /> },
-      { path: '/operator/trips/:tripId/edit', element: <TripEditorPage /> },
-      { path: '/operator/buses', element: <BusesPage /> },
-      { path: '/operator/layouts', element: <LayoutsPage /> },
-      { path: '/operator/layouts/:layoutId', element: <SeatLayoutPage /> },
-      { path: '/operator/routes', element: <RoutesPage /> },
-      { path: '/operator/agents', element: <AgentsPage /> },
-      { path: '/operator/reports', element: <ReportsPage /> },
+      { path: '/operator', lazy: page(() => import('@/pages/OperatorOverviewPage'), 'OperatorOverviewPage') },
+      { path: '/operator/trips', lazy: page(() => import('@/pages/operator/TripsPage'), 'TripsPage') },
+      { path: '/operator/trips/new', lazy: page(() => import('@/pages/operator/TripEditorPage'), 'TripEditorPage') },
+      { path: '/operator/trips/:tripId/edit', lazy: page(() => import('@/pages/operator/TripEditorPage'), 'TripEditorPage') },
+      { path: '/operator/buses', lazy: page(() => import('@/pages/operator/BusesPage'), 'BusesPage') },
+      { path: '/operator/layouts', lazy: page(() => import('@/pages/operator/LayoutsPage'), 'LayoutsPage') },
+      { path: '/operator/layouts/:layoutId', lazy: page(() => import('@/pages/SeatLayoutPage'), 'SeatLayoutPage') },
+      { path: '/operator/routes', lazy: page(() => import('@/pages/operator/RoutesPage'), 'RoutesPage') },
+      { path: '/operator/agents', lazy: page(() => import('@/pages/operator/AgentsPage'), 'AgentsPage') },
+      { path: '/operator/reports', lazy: page(() => import('@/pages/operator/ReportsPage'), 'ReportsPage') },
 
       { path: '*', element: <NotFoundPage /> },
     ],
