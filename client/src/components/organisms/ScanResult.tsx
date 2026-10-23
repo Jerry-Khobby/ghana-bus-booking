@@ -30,9 +30,15 @@ export function ValidScan({ passenger, code, seat, detail, boarded, onBoard }: V
           </div>
         </div>
         <p className="m-0 text-sm text-muted">{detail}</p>
-        <Button size="xl" className="text-[17px]" variant={boarded ? 'muted' : 'primary'} disabled={boarded} onClick={onBoard}>
-          {boarded ? 'Boarded' : 'Mark as boarded'}
-        </Button>
+        {boarded ? (
+          <p role="status" className="m-0 flex min-h-14 items-center justify-center rounded-xl bg-brand-tint text-[17px] font-semibold text-brand-ink">
+            Boarded · scan the next ticket
+          </p>
+        ) : (
+          <Button size="xl" className="text-[17px]" onClick={onBoard}>
+            Mark as boarded
+          </Button>
+        )}
       </div>
     </section>
   )
