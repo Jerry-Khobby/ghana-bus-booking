@@ -6,7 +6,7 @@ import { cx } from '@/lib/format'
 interface AgentTemplateProps {
   children: ReactNode
   /** Sub-pages (walk-in sale) show a back arrow on phones. */
-  back?: { to: string; label: string }
+  back?: { to: string; label: string; title: string }
   /** `split` puts the main card and sidebar side by side on desktop; `stack` is a single column. */
   layout?: 'split' | 'stack'
 }

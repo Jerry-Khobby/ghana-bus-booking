@@ -31,21 +31,22 @@ export function LoadingConsole({ trip, freeSeats, departed, onDepart }: LoadingC
       </div>
 
       <div className="flex flex-col gap-5 p-4 sm:p-6">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <Heading as="h1" size="xl" id="now-h">
+        <div className="flex items-end justify-between gap-2.5 md:flex-wrap md:gap-4">
+          <div className="min-w-0">
+            <Heading as="h1" size="xl" id="now-h" className="text-2xl md:text-[30px] lg:text-[34px]">
               {trip.from.city} → {trip.to.city}
             </Heading>
-            <p className="m-0 mt-0.5 text-muted">
-              {trip.operator} · {trip.busType === 'Air-conditioned coach' ? 'AC coach' : trip.busType} · {trip.capacity} seats
+            <p className="m-0 mt-0.5 text-sm text-muted md:text-base">
+              <span className="hidden md:inline">{trip.operator} · </span>
+              {trip.busType === 'Air-conditioned coach' ? 'AC coach' : trip.busType} · {trip.capacity} seats
             </p>
           </div>
-          <div className="text-right">
-            <p className="m-0 font-display text-[44px] font-extrabold leading-none">
+          <div className="shrink-0 text-right">
+            <p className="m-0 font-display text-4xl font-extrabold leading-none md:text-[44px]">
               {sold}
-              <span className="text-[22px] text-muted">/{trip.capacity}</span>
+              <span className="text-lg text-muted md:text-[22px]">/{trip.capacity}</span>
             </p>
-            <p className="m-0 mt-1 text-sm text-muted">seats sold · {freeSeats.length} left</p>
+            <p className="m-0 mt-1 hidden text-sm text-muted md:block">seats sold · {freeSeats.length} left</p>
           </div>
         </div>
 
@@ -82,7 +83,10 @@ export function LoadingConsole({ trip, freeSeats, departed, onDepart }: LoadingC
           </Button>
         </div>
         <p className="m-0 text-sm text-muted">
-          {freeSeats.length} seats left · walk-in sales take the lowest free seat number and print or SMS a ticket. Online buyers see the change instantly.
+          <span className="md:hidden">{freeSeats.length} seats left · walk-ins take the lowest free number</span>
+          <span className="hidden md:inline">
+            Walk-in sales take the lowest free seat number and print or SMS a ticket. Online buyers see the change instantly.
+          </span>
         </p>
       </div>
     </section>

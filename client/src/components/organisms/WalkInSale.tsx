@@ -74,7 +74,14 @@ export function WalkInForm({ freeSeats, fare, draft, onChange, onSubmit }: WalkI
         <FormField id="wi-name" label="Passenger name (optional)">
           <TextInput id="wi-name" autoComplete="off" placeholder="e.g. Yaw Mensah" value={draft.name} onChange={(e) => set({ name: e.target.value })} />
         </FormField>
-        <FormField id="wi-phone" label="Phone for SMS ticket (optional)">
+        <FormField
+          id="wi-phone"
+          label={
+            <>
+              Phone for SMS<span className="hidden lg:inline"> ticket</span> (optional)
+            </>
+          }
+        >
           <TextInput id="wi-phone" type="tel" inputMode="tel" placeholder="024 000 0000" className="font-mono" value={draft.phone} onChange={(e) => set({ phone: e.target.value })} />
         </FormField>
       </div>
@@ -98,7 +105,13 @@ export function WalkInForm({ freeSeats, fare, draft, onChange, onSubmit }: WalkI
 
       {draft.payment === 'momo' ? (
         <div className="max-w-[420px]">
-          <FormField id="wi-momo" label="Passenger's mobile money number" hint="The passenger approves the prompt on their phone. The ticket is issued once payment confirms.">
+          <FormField id="wi-momo" label="Passenger's mobile money number" hint={
+              <>
+                <span className="lg:hidden">The ticket is issued once the passenger approves the prompt.</span>
+                <span className="hidden lg:inline">The passenger approves the prompt on their phone. The ticket is issued once payment confirms.</span>
+              </>
+            }
+          >
             <TextInput
               id="wi-momo"
               type="tel"
@@ -113,7 +126,8 @@ export function WalkInForm({ freeSeats, fare, draft, onChange, onSubmit }: WalkI
         </div>
       ) : (
         <p className="m-0 rounded-[10px] bg-held px-3.5 py-3 text-[15px] text-held-ink">
-          Collect <strong>{cedis(fare)}</strong> in cash before issuing. Cash sales are listed under your name in the end-of-day report.
+          Collect <strong>{cedis(fare)}</strong> in cash before issuing. <span className="lg:hidden">It is listed</span>
+          <span className="hidden lg:inline">Cash sales are listed</span> under your name in the end-of-day report.
         </p>
       )}
 

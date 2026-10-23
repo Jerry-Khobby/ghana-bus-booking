@@ -39,9 +39,10 @@ export function WalkInPage() {
   }
 
   return (
-    <AgentTemplate layout="stack" back={{ to: '/agent', label: 'Back to loading console' }}>
+    <AgentTemplate layout="stack" back={{ to: '/agent', label: 'Back to loading console', title: 'Walk-in sale' }}>
       <PageHeader
         back={{ to: '/agent', label: 'Loading console' }}
+        backFromTablet
         title="Sell a walk-in seat"
         subtitle={`${trip.from.city} → ${trip.to.city} · ${trip.plate} · bay ${trip.bay} · ${plural(station.freeSeats.length, 'seat')} left`}
       />
