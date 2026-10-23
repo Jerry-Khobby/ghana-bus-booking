@@ -15,6 +15,13 @@ import { SeatPage } from '@/pages/SeatPage'
 import { SignInPage } from '@/pages/SignInPage'
 import { StaffSignInPage } from '@/pages/StaffSignInPage'
 import { TicketPage } from '@/pages/TicketPage'
+import { AgentsPage } from '@/pages/operator/AgentsPage'
+import { BusesPage } from '@/pages/operator/BusesPage'
+import { LayoutsPage } from '@/pages/operator/LayoutsPage'
+import { ReportsPage } from '@/pages/operator/ReportsPage'
+import { RoutesPage } from '@/pages/operator/RoutesPage'
+import { TripEditorPage } from '@/pages/operator/TripEditorPage'
+import { TripsPage } from '@/pages/operator/TripsPage'
 import { WalkInPage } from '@/pages/WalkInPage'
 
 function Root() {
@@ -32,8 +39,6 @@ function Root() {
     </>
   )
 }
-
-const comingSoon = <NotFoundPage title="Coming soon" body="This screen is planned but not designed yet." />
 
 export const router = createBrowserRouter([
   {
@@ -59,8 +64,15 @@ export const router = createBrowserRouter([
 
       // Operator
       { path: '/operator', element: <OperatorOverviewPage /> },
-      { path: '/operator/layouts', element: <SeatLayoutPage /> },
-      { path: '/operator/*', element: comingSoon },
+      { path: '/operator/trips', element: <TripsPage /> },
+      { path: '/operator/trips/new', element: <TripEditorPage /> },
+      { path: '/operator/trips/:tripId/edit', element: <TripEditorPage /> },
+      { path: '/operator/buses', element: <BusesPage /> },
+      { path: '/operator/layouts', element: <LayoutsPage /> },
+      { path: '/operator/layouts/:layoutId', element: <SeatLayoutPage /> },
+      { path: '/operator/routes', element: <RoutesPage /> },
+      { path: '/operator/agents', element: <AgentsPage /> },
+      { path: '/operator/reports', element: <ReportsPage /> },
 
       { path: '*', element: <NotFoundPage /> },
     ],

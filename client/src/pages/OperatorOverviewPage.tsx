@@ -40,7 +40,7 @@ export function OperatorOverviewPage() {
 
       <section aria-label="Today in numbers" className="grid grid-cols-2 gap-2.5 sm:gap-3.5 lg:grid-cols-4">
         <StatTile label="Tickets sold" value={String(sold)} note="online and walk-in" />
-        <StatTile label="Revenue" value={cedis(revenue)} note="confirmed payments only" />
+        <StatTile label="Revenue" value={cedis(revenue, { whole: true })} note="confirmed payments only" />
         <StatTile label="Average seat fill" value={`${fill}%`} note="departed trips" />
         <StatTile label="Failed payments" value={String(failedPaymentsToday)} note="seats released" danger />
       </section>

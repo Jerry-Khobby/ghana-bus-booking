@@ -23,20 +23,19 @@ export function LayoutSettings({ name, onNameChange, layout, onChange, onSave }:
       className="flex w-full min-w-0 flex-col gap-4 rounded-[14px] border border-line bg-surface p-3.5 md:flex-1 md:gap-5 md:p-[18px] lg:w-[340px] lg:flex-none lg:gap-[22px] lg:p-[22px]"
     >
       <FormField id="lname" label="Layout name">
-        <TextInput id="lname" value={name} onChange={(e) => onNameChange(e.target.value)} />
+        <TextInput id="lname" required value={name} onChange={(e) => onNameChange(e.target.value)} />
       </FormField>
 
       <fieldset className="m-0 border-0 p-0">
         <Eyebrow as="legend" className="pb-2.5">
           Seats per row
         </Eyebrow>
-        <div className="grid grid-cols-2 gap-2.5">
-          <OptionTile size="md" selected={layout.right === 2} onSelect={() => onChange({ ...layout, right: 2 })}>
-            2 + 2
-          </OptionTile>
-          <OptionTile size="md" selected={layout.right === 3} onSelect={() => onChange({ ...layout, right: 3 })}>
-            2 + 3
-          </OptionTile>
+        <div className="grid grid-cols-3 gap-2.5">
+          {[1, 2, 3].map((right) => (
+            <OptionTile key={right} size="md" selected={layout.right === right} onSelect={() => onChange({ ...layout, right })}>
+              {layout.left} + {right}
+            </OptionTile>
+          ))}
         </div>
       </fieldset>
 
@@ -69,7 +68,7 @@ export const LAYOUT_FORM_ID = 'layout-form'
 export function LayoutActions() {
   return (
     <div className="grid grid-cols-2 gap-2.5">
-      <ButtonLink to="/operator" variant="outline" className="min-h-[52px] md:min-h-12">
+      <ButtonLink to="/operator/layouts" variant="outline" className="min-h-[52px] md:min-h-12">
         Cancel
       </ButtonLink>
       <Button type="submit" form={LAYOUT_FORM_ID} className="min-h-[52px] md:min-h-12">

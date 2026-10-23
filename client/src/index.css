@@ -36,6 +36,9 @@
   --color-held-line: #7A6200;
   --color-held-ink: #5C3D00;
 
+  /* Chart-only gold: the flag gold is too light on white for thin marks (checked with the palette validator). */
+  --color-chart-gold: #D4A900;
+
   /* Flag red */
   --color-danger: #CF0921;
 

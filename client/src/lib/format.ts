@@ -1,7 +1,9 @@
 import type { Trip } from '@/data/types'
 
-export function cedis(amount: number): string {
-  return `GH¢ ${amount.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+/** GH¢ with pesewas; `whole` drops them for big report totals. */
+export function cedis(amount: number, { whole = false }: { whole?: boolean } = {}): string {
+  const digits = whole ? 0 : 2
+  return `GH¢ ${amount.toLocaleString('en-GH', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 }
 
 export function percentSold(trip: Pick<Trip, 'capacity' | 'seatsLeft'>): number {

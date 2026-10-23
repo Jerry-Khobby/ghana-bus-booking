@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { cx } from '@/lib/format'
 
-export type BadgeTone = 'loading' | 'scheduled' | 'full' | 'departed' | 'valid' | 'chip' | 'held'
+export type BadgeTone = 'loading' | 'scheduled' | 'full' | 'departed' | 'valid' | 'chip' | 'held' | 'warning'
 
 const tones: Record<BadgeTone, string> = {
   loading: 'bg-gold text-gold-ink',
@@ -11,6 +11,7 @@ const tones: Record<BadgeTone, string> = {
   valid: 'bg-brand-tint text-brand-ink',
   chip: 'bg-ink-soft text-on-dark font-normal',
   held: 'rounded-md border border-dashed border-held-line bg-held text-held-ink',
+  warning: 'bg-held text-held-ink',
 }
 
 interface BadgeProps {
