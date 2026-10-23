@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { createBrowserRouter, Outlet, ScrollRestoration, useLocation } from 'react-router'
+import { Outlet, ScrollRestoration, useLocation, type RouteObject } from 'react-router'
 import { AgentConsolePage } from '@/pages/AgentConsolePage'
 import { HomePage } from '@/pages/HomePage'
 import { MyTicketsPage } from '@/pages/MyTicketsPage'
@@ -40,7 +40,8 @@ function Root() {
   )
 }
 
-export const router = createBrowserRouter([
+/** Every page in the app. main.tsx turns this into the browser router. */
+export const routes: RouteObject[] = [
   {
     element: <Root />,
     children: [
@@ -77,4 +78,4 @@ export const router = createBrowserRouter([
       { path: '*', element: <NotFoundPage /> },
     ],
   },
-])
+]
