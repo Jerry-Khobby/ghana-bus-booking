@@ -25,7 +25,7 @@ export function SegmentedControl<T extends string>({ label, options, value, onCh
             aria-pressed={on}
             onClick={() => onChange(o.value)}
             className={cx(
-              'min-h-11 flex-1 cursor-pointer rounded-[9px] border-0 font-semibold transition-colors',
+              'min-h-11 flex-1 cursor-pointer whitespace-nowrap rounded-[9px] border-0 px-3.5 font-semibold transition-colors',
               on ? 'bg-surface text-ink shadow-[0_1px_3px_rgba(22,32,28,0.15)]' : 'bg-transparent text-muted hover:text-ink',
             )}
           >

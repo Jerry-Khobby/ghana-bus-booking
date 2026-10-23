@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react'
 import { cx } from '@/lib/format'
 
 interface ChoiceCardProps {
   title: string
-  hint: string
+  hint: ReactNode
   selected: boolean
   onSelect: () => void
 }

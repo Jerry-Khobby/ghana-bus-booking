@@ -6,6 +6,8 @@ export interface DropdownOption<T extends string> {
   label: string
   /** Optional second line under the label. */
   hint?: string
+  /** Shorter text for the closed button on phones, e.g. "Today" for "Today — leaving now". */
+  short?: string
 }
 
 interface DropdownProps<T extends string> {
@@ -156,7 +158,14 @@ export function Dropdown<T extends string>({
           open && (dark ? 'border-gold' : 'border-brand ring-2 ring-brand/25'),
         )}
       >
-        <span className="truncate">{selected?.label}</span>
+        {selected?.short ? (
+          <>
+            <span className="truncate sm:hidden">{selected.short}</span>
+            <span className="hidden truncate sm:inline">{selected.label}</span>
+          </>
+        ) : (
+          <span className="truncate">{selected?.label}</span>
+        )}
         <svg
           width="18"
           height="18"

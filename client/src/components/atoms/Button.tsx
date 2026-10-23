@@ -5,12 +5,15 @@ import { cx } from '@/lib/format'
 export type ButtonVariant = 'primary' | 'dark' | 'outline' | 'outline-light' | 'light' | 'muted'
 export type ButtonSize = 'md' | 'lg' | 'xl'
 
+// Coloured variants fade when disabled; `muted` already is the designed disabled look.
+const fade = 'disabled:opacity-50'
+
 const variants: Record<ButtonVariant, string> = {
-  primary: 'bg-brand text-white hover:bg-brand-dark hover:text-white',
-  dark: 'bg-ink text-white hover:bg-ink-soft hover:text-white',
-  outline: 'border-2 border-ink text-ink bg-surface hover:bg-canvas hover:text-ink',
-  'outline-light': 'border border-on-brand text-white hover:bg-white/10 hover:text-white',
-  light: 'bg-surface text-ink hover:bg-canvas hover:text-ink',
+  primary: `bg-brand text-white hover:bg-brand-dark hover:text-white disabled:bg-brand ${fade}`,
+  dark: `bg-ink text-white hover:bg-ink-soft hover:text-white disabled:bg-ink ${fade}`,
+  outline: `border-2 border-ink text-ink bg-surface hover:bg-canvas hover:text-ink ${fade}`,
+  'outline-light': `border border-on-brand text-white hover:bg-white/10 hover:text-white ${fade}`,
+  light: `bg-surface text-ink hover:bg-canvas hover:text-ink ${fade}`,
   muted: 'bg-sunken text-muted cursor-not-allowed',
 }
 

@@ -23,7 +23,7 @@ export function Eyebrow({
 type HeadingSize = 'hero' | 'xl' | 'lg' | 'md' | 'sm'
 
 const headingSizes: Record<HeadingSize, string> = {
-  hero: 'text-[40px] sm:text-5xl lg:text-[60px] leading-[1.02] tracking-[-0.03em] font-extrabold',
+  hero: 'text-[34px] leading-[1.05] md:text-[46px] md:leading-[1.04] lg:text-[60px] lg:leading-[1.02] tracking-[-0.03em] font-extrabold',
   xl: 'text-[28px] sm:text-[34px] tracking-[-0.02em] font-extrabold',
   lg: 'text-2xl sm:text-[30px] tracking-[-0.02em] font-extrabold',
   md: 'text-[22px] font-bold',

@@ -3,8 +3,8 @@ import { FieldLabel } from '@/components/atoms'
 
 interface FormFieldProps {
   id: string
-  label: string
-  hint?: string
+  label: ReactNode
+  hint?: ReactNode
   children: ReactNode
 }
 
