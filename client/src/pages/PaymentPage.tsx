@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useBooking } from '@/app/BookingContext'
 import { Badge, ButtonLink, Card, Heading } from '@/components/atoms'
@@ -13,70 +13,58 @@ import {
 } from '@/components/organisms'
 import { BookingTemplate } from '@/components/templates'
 import { SERVICE_FEE, findTrip } from '@/data/mock'
+import type { Trip } from '@/data/types'
 import { useCountdown } from '@/hooks/useCountdown'
 import { seatList } from '@/lib/format'
 import { NotFoundPage } from './NotFoundPage'
 
-/** Simulated wait for the passenger to approve the MoMo prompt. */
-const APPROVAL_DELAY_MS = 1800
+/**
+ * Shown on any payment step when no seats are held: either none were picked,
+ * or the 5-minute hold ran out (then the seats are released here).
+ */
+export function NoSeatsHeld({ trip, expired }: { trip: Trip; expired: boolean }) {
+  const { releaseSeats } = useBooking()
+  useEffect(() => {
+    if (expired) releaseSeats()
+  }, [expired, releaseSeats])
+
+  const title = expired ? 'Your seat hold ran out' : 'Pick a seat first'
+  return (
+    <BookingTemplate
+      step="Pay"
+      back={{ to: `/trips/${trip.id}/seat`, label: 'Pick a seat' }}
+      mobile={{ title }}
+      title={
+        <Heading as="h1" size="xl">
+          {title}
+        </Heading>
+      }
+    >
+      <Card className="flex max-w-xl flex-col gap-4">
+        <p className="m-0 text-muted">
+          {expired
+            ? 'The seats went back on sale and you were not charged. Pick your seats again to continue.'
+            : 'Choose free seats on the bus and we will hold them for you for 5 minutes while you pay.'}
+        </p>
+        <ButtonLink to={`/trips/${trip.id}/seat`} className="self-start">
+          Back to the seat map
+        </ButtonLink>
+      </Card>
+    </BookingTemplate>
+  )
+}
 
 export function PaymentPage() {
   const { tripId } = useParams()
   const trip = findTrip(tripId)
   const booking = useBooking()
   const navigate = useNavigate()
-  const [pending, setPending] = useState(false)
-  const [expired, setExpired] = useState(false)
-  const timer = useRef<number | null>(null)
 
   const seats = booking.tripId === trip?.id ? booking.seats : []
   const secondsLeft = useCountdown(seats.length ? booking.holdExpiresAt : null)
-  const { releaseSeats } = booking
-
-  useEffect(() => {
-    if (secondsLeft === 0) {
-      setExpired(true)
-      releaseSeats()
-    }
-  }, [secondsLeft, releaseSeats])
-
-  useEffect(
-    () => () => {
-      if (timer.current) window.clearTimeout(timer.current)
-    },
-    [],
-  )
 
   if (!trip) return <NotFoundPage />
-
-  const back = { to: `/trips/${trip.id}/seat`, label: seats.length ? 'Change seats' : 'Pick a seat' }
-
-  if (seats.length === 0) {
-    const title = expired ? 'Your seat hold ran out' : 'Pick a seat first'
-    return (
-      <BookingTemplate step="Pay" back={back} mobile={{ title }} title={<Heading as="h1" size="xl">{title}</Heading>}>
-        <Card className="flex max-w-xl flex-col gap-4">
-          <p className="m-0 text-muted">
-            {expired
-              ? 'The seats went back on sale and you were not charged. Pick your seats again to continue.'
-              : 'Choose free seats on the bus and we will hold them for you for 5 minutes while you pay.'}
-          </p>
-          <ButtonLink to={`/trips/${trip.id}/seat`} className="self-start">
-            Back to the seat map
-          </ButtonLink>
-        </Card>
-      </BookingTemplate>
-    )
-  }
-
-  function pay() {
-    setPending(true)
-    timer.current = window.setTimeout(() => {
-      // Leave the page first so it never re-renders with the seats already cleared.
-      navigate('/ticket')
-      booking.confirmPayment()
-    }, APPROVAL_DELAY_MS)
-  }
+  if (seats.length === 0 || secondsLeft === 0) return <NoSeatsHeld trip={trip} expired={secondsLeft === 0} />
 
   const total = paymentTotal(trip, seats, SERVICE_FEE)
   const title = `Pay for ${seats.length > 1 ? 'seats' : 'seat'} ${seatList(seats)}`
@@ -85,7 +73,7 @@ export function PaymentPage() {
   return (
     <BookingTemplate
       step="Pay"
-      back={back}
+      back={{ to: `/trips/${trip.id}/seat`, label: seats.length > 1 ? 'Change seats' : 'Change seat' }}
       title={
         <>
           <Heading as="h1" size="xl">
@@ -103,7 +91,7 @@ export function PaymentPage() {
         ),
       }}
       mobileStrip={secondsLeft !== null ? <HoldTimer secondsLeft={secondsLeft} tone="strip" plural={seats.length > 1} /> : undefined}
-      mobileBar={<PayButton total={total} pending={pending} />}
+      mobileBar={<PayButton total={total} pending={false} />}
     >
       <div className="flex flex-col gap-3.5 md:gap-[18px] lg:flex-row lg:items-start lg:gap-7">
         <PaymentSummaryStrip {...summary} />
@@ -117,8 +105,8 @@ export function PaymentPage() {
             onNetworkChange={booking.setNetwork}
             phone={booking.phone}
             onPhoneChange={booking.setPhone}
-            onSubmit={pay}
-            pending={pending}
+            onSubmit={() => navigate(`/trips/${trip.id}/pay/pending`)}
+            pending={false}
           />
         </div>
         <PaymentSummary {...summary} />

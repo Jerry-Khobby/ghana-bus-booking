@@ -5,8 +5,8 @@ import { SiteHeader } from '@/components/organisms'
 interface BookingTemplateProps {
   step: BookingStep
   back: { to: string; label: string }
-  /** Title row: the h1 plus any badges next to it (tablet and desktop). */
-  title: ReactNode
+  /** Title row: the h1 plus any badges next to it (tablet and desktop). Null for centred status pages. */
+  title: ReactNode | null
   /** Compact header used on phones instead of the site header and title row. */
   mobile: { title: string; subtitle?: string; trailing?: ReactNode }
   /** Full-width strip under the phone header, e.g. the hold timer. */
@@ -29,11 +29,13 @@ export function BookingTemplate({ step, back, title, mobile, mobileStrip, mobile
       </div>
 
       <main className="mx-auto w-full max-w-[1200px] flex-1 px-4 pb-6 pt-3.5 sm:px-6 md:pb-16 md:pt-6 lg:pt-7">
-        <div className="hidden md:block">
-          <BackLink to={back.to}>{back.label}</BackLink>
-          <div className="mt-3 flex flex-wrap items-center gap-3">{title}</div>
-        </div>
-        <div className="md:mt-6">{children}</div>
+        {title && (
+          <div className="hidden md:block">
+            <BackLink to={back.to}>{back.label}</BackLink>
+            <div className="mt-3 flex flex-wrap items-center gap-3">{title}</div>
+          </div>
+        )}
+        <div className={title ? 'md:mt-6' : undefined}>{children}</div>
       </main>
 
       {mobileBar && (

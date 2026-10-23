@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { cx } from '@/lib/format'
 
 export function LogoMark({ size = 32 }: { size?: number }) {
@@ -13,7 +14,7 @@ export function LogoMark({ size = 32 }: { size?: number }) {
 }
 
 interface LogoProps {
-  label?: string
+  label?: ReactNode
   size?: 'sm' | 'md'
   className?: string
 }

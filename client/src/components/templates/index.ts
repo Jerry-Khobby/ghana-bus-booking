@@ -1,4 +1,5 @@
 export * from './AgentTemplate'
+export * from './AuthTemplate'
 export * from './BookingTemplate'
 export * from './OperatorTemplate'
 export * from './PassTemplate'

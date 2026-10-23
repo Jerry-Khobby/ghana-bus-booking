@@ -19,7 +19,10 @@ interface BookingState {
   method: PaymentMethod
   network: MomoNetwork
   phone: string
+  /** Tickets from the most recent payment. */
   tickets: Ticket[]
+  /** Every ticket bought in this session, newest first; shown in "My tickets". */
+  history: Ticket[]
 }
 
 export type ToggleResult = 'added' | 'removed' | 'limit'
@@ -43,6 +46,7 @@ const initial: BookingState = {
   network: 'MTN',
   phone: '',
   tickets: [],
+  history: [],
 }
 
 const BookingContext = createContext<BookingContextValue | null>(null)
@@ -88,7 +92,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
         passengerName: `Passenger ${i + 1}`,
         phone: state.phone,
       }))
-    setState((s) => ({ ...s, tickets, seats: [], holdExpiresAt: null }))
+    setState((s) => ({ ...s, tickets, history: [...tickets, ...s.history], seats: [], holdExpiresAt: null }))
     return tickets
   }, [state.tripId, state.seats, state.phone])
 
