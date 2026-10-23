@@ -1,15 +1,20 @@
+import { useOperator } from '@/app/OperatorContext'
 import { ButtonLink, Heading } from '@/components/atoms'
 import { StatTile } from '@/components/molecules'
 import { TripsTable, type OperatorTripRow } from '@/components/organisms'
 import { OperatorTemplate } from '@/components/templates'
-import { failedPaymentsToday, operatorTrips } from '@/data/mock'
+import { failedPaymentsToday } from '@/data/operator'
 import { cedis } from '@/lib/format'
 
 export function OperatorOverviewPage() {
-  const rows: OperatorTripRow[] = operatorTrips.map((t) => ({ ...t, revenue: t.sold * t.fare }))
-  const sold = rows.reduce((sum, r) => sum + r.sold, 0)
-  const revenue = rows.reduce((sum, r) => sum + r.revenue, 0)
-  const departed = rows.filter((r) => r.status === 'departed')
+  const { trips } = useOperator()
+  const rows: OperatorTripRow[] = trips
+    .filter((t) => t.status !== 'full')
+    .slice(0, 6)
+    .map((t) => ({ ...t, revenue: t.sold * t.fare }))
+  const sold = trips.reduce((sum, r) => sum + r.sold, 0)
+  const revenue = trips.reduce((sum, r) => sum + r.sold * r.fare, 0)
+  const departed = trips.filter((r) => r.status === 'departed')
   const fill = departed.length
     ? Math.round((departed.reduce((s, r) => s + r.sold / r.capacity, 0) / departed.length) * 100)
     : 0

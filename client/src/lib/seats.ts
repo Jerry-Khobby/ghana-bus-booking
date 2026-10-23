@@ -1,20 +1,12 @@
 import { demoSeatMap } from '@/data/mock'
-import type { SeatStatus, Trip } from '@/data/types'
+import type { SeatLayout, SeatStatus, Trip } from '@/data/types'
 
 export const HOLD_SECONDS = 5 * 60
 
 /** Most seats one booking can hold at a time. */
 export const MAX_SEATS = 6
 
-export interface SeatLayout {
-  /** Seats left of the aisle per row. */
-  left: number
-  /** Seats right of the aisle per row. */
-  right: number
-  rows: number
-  /** Full-width back row with one extra seat over the aisle. */
-  backRow: boolean
-}
+export type { SeatLayout }
 
 export const defaultLayout: SeatLayout = { left: 2, right: 2, rows: 11, backRow: true }
 

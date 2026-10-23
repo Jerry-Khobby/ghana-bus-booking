@@ -1,4 +1,4 @@
-import type { Trip, TripStatus } from './types'
+import type { Trip } from './types'
 
 /*
  * Mock data that stands in for the API until the server is built.
@@ -132,26 +132,6 @@ export const demoSeatMap = {
   free: [3, 14, 15, 30, 37, 48],
   held: [22, 41],
 }
-
-export const operatorTrips: Array<{
-  route: string
-  plate: string
-  when: string
-  status: TripStatus
-  sold: number
-  capacity: number
-  fare: number
-}> = [
-  { route: 'Accra → Kumasi', plate: 'GR 4471-24', when: 'When full', status: 'loading', sold: 41, capacity: 49, fare: 150 },
-  { route: 'Accra → Kumasi', plate: 'GR 1190-25', when: '14:30', status: 'scheduled', sold: 27, capacity: 49, fare: 150 },
-  { route: 'Accra → Cape Coast', plate: 'GW 2290-23', when: 'When full', status: 'loading', sold: 22, capacity: 49, fare: 90 },
-  { route: 'Accra → Takoradi', plate: 'GR 3015-24', when: '15:00', status: 'scheduled', sold: 12, capacity: 49, fare: 130 },
-  { route: 'Accra → Kumasi', plate: 'GR 6610-21', when: '09:00', status: 'departed', sold: 49, capacity: 49, fare: 150 },
-  { route: 'Accra → Tamale', plate: 'GR 7742-25', when: '06:00', status: 'departed', sold: 46, capacity: 49, fare: 280 },
-]
-
-/** Payments that failed or timed out today; their seats went back on sale. */
-export const failedPaymentsToday = 3
 
 /** Bays the signed-in agent looks after, and the trip loading at each (null: empty bay). */
 export const agentBays: Record<number, string | null> = {
