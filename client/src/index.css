@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens from the Seatline design canvas.
+ * Brand colours are the Ghana flag values: green #006B3D, gold #FCD20F, red #CF0921.
+ */
+@theme {
+  --font-display: "Archivo", system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Surfaces and text */
+  --color-canvas: #F6F5F1;
+  --color-surface: #FFFFFF;
+  --color-sunken: #ECEAE3;
+  --color-ink: #16201C;
+  --color-ink-soft: #2B3732;
+  --color-ink-line: #3A4641;
+  --color-ink-deep: #0E1512;
+  --color-muted: #56605B;
+  --color-on-dark: #C7D1CC;
+  --color-on-brand: #CFE6DC;
+  --color-line: #DCDAD2;
+  --color-line-strong: #C9C7BE;
+
+  /* Flag green */
+  --color-brand: #006B3D;
+  --color-brand-dark: #00512E;
+  --color-brand-tint: #E3F0EA;
+  --color-brand-ink: #0E3B2C;
+
+  /* Flag gold */
+  --color-gold: #FCD20F;
+  --color-gold-ink: #2E2000;
+  --color-held: #FEF0B3;
+  --color-held-line: #7A6200;
+  --color-held-ink: #5C3D00;
+
+  /* Flag red */
+  --color-danger: #CF0921;
+
+  /* Taken / inactive */
+  --color-taken: #CDD2CE;
+  --color-taken-ink: #46504B;
+  --color-inactive: #8A928D;
+}
+
+@layer base {
+  body {
+    @apply bg-canvas text-ink font-sans text-base leading-normal antialiased;
+    margin: 0;
+  }
+
+  input,
+  select,
+  button,
+  textarea {
+    font: inherit;
+  }
+
+  a {
+    @apply text-brand hover:text-brand-dark;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-gold);
+    outline-offset: 2px;
+  }
+}
