@@ -15,6 +15,7 @@ import { SeatPage } from '@/pages/SeatPage'
 import { SignInPage } from '@/pages/SignInPage'
 import { StaffSignInPage } from '@/pages/StaffSignInPage'
 import { TicketPage } from '@/pages/TicketPage'
+import { WalkInPage } from '@/pages/WalkInPage'
 
 function Root() {
   const { hash, pathname } = useLocation()
@@ -54,6 +55,7 @@ export const router = createBrowserRouter([
       // Station agent
       { path: '/agent', element: <AgentConsolePage /> },
       { path: '/agent/scan', element: <ScanPage /> },
+      { path: '/agent/walk-in', element: <WalkInPage /> },
 
       // Operator
       { path: '/operator', element: <OperatorOverviewPage /> },
