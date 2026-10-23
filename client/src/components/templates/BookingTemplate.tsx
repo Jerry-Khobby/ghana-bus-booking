@@ -8,7 +8,7 @@ interface BookingTemplateProps {
   /** Title row: the h1 plus any badges next to it (tablet and desktop). Null for centred status pages. */
   title: ReactNode | null
   /** Compact header used on phones instead of the site header and title row. */
-  mobile: { title: string; subtitle?: string; trailing?: ReactNode }
+  mobile: { title: string; subtitle?: string; trailing?: ReactNode; /** False when the page body has its own h1. */ asHeading?: boolean }
   /** Full-width strip under the phone header, e.g. the hold timer. */
   mobileStrip?: ReactNode
   /** Sticky bar pinned to the bottom of the screen on phones. */
@@ -24,7 +24,7 @@ export function BookingTemplate({ step, back, title, mobile, mobileStrip, mobile
         <SiteHeader step={step} />
       </div>
       <div className="md:hidden">
-        <MobileTopBar back={back} title={mobile.title} subtitle={mobile.subtitle} trailing={mobile.trailing} />
+        <MobileTopBar back={back} title={mobile.title} subtitle={mobile.subtitle} trailing={mobile.trailing} asHeading={mobile.asHeading} />
         {mobileStrip}
       </div>
 

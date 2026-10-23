@@ -86,7 +86,7 @@ export function PassengerSignInForm({ onVerified }: PassengerSignInFormProps) {
             <Heading as="h2" size="lg" id="signin-h" className="text-[26px] md:text-[30px]">
               Sign in or create an account
             </Heading>
-            <p className="m-0 mt-1.5 text-muted">We will text you a 6-digit code.</p>
+            <p className="m-0 mt-1.5 text-muted">We will text you a 6-digit code.<span className="lg:hidden"> No password needed.</span></p>
           </div>
           <div className="flex flex-col gap-1.5">
             <FieldLabel htmlFor="si-phone">Phone number</FieldLabel>
@@ -132,7 +132,7 @@ export function PassengerSignInForm({ onVerified }: PassengerSignInFormProps) {
           <div className="flex flex-wrap items-center justify-between gap-3 text-[15px]">
             {resendIn ? (
               <span className="text-muted">
-                Resend code in <span className="font-mono">0:{String(resendIn).padStart(2, '0')}</span>
+                Resend<span className="hidden sm:inline"> code</span> in <span className="font-mono">0:{String(resendIn).padStart(2, '0')}</span>
               </span>
             ) : (
               <button type="button" onClick={() => setResendAt(Date.now() + RESEND_SECONDS * 1000)} className="min-h-11 cursor-pointer border-0 bg-transparent p-0 font-semibold text-brand underline">

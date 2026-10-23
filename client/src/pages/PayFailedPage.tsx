@@ -26,7 +26,7 @@ export function PayFailedPage() {
       step="Pay"
       back={{ to: `/trips/${trip.id}/pay`, label: 'Back to payment' }}
       title={null}
-      mobile={{ title: 'Payment failed' }}
+      mobile={{ title: 'Step 3 of 4 · Pay', asHeading: false }}
     >
       <div className="mx-auto flex max-w-[640px] flex-col gap-3.5 md:gap-5 md:pt-6">
         <PaymentFailedCard seatsLabel={seatsLabel} secondsLeft={secondsLeft} />

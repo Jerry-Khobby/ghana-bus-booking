@@ -77,11 +77,12 @@ export function HeldSeatsStrip({ label, detail, secondsLeft }: { label: string; 
   )
 }
 
+/** Full wording on desktop, the shorter phone and tablet wording below that. */
 const reasons = [
-  'The prompt was not approved within the time allowed',
-  'Not enough money in the mobile money wallet',
-  'Wrong PIN entered',
-  'The card was declined by the bank',
+  { long: 'The prompt was not approved within the time allowed', short: 'Prompt not approved in time' },
+  { long: 'Not enough money in the mobile money wallet', short: 'Not enough money in the wallet' },
+  { long: 'Wrong PIN entered', short: 'Wrong PIN entered' },
+  { long: 'The card was declined by the bank', short: 'Card declined by the bank' },
 ]
 
 /** Red-headed card explaining a failed payment; the seats stay held while the timer runs. */
@@ -100,15 +101,20 @@ export function PaymentFailedCard({ seatsLabel, secondsLeft }: { seatsLabel: str
         </p>
         {secondsLeft !== null && secondsLeft > 0 && (
           <div className="flex flex-wrap justify-between gap-2 rounded-xl bg-ink px-4 py-3.5 text-white">
-            <span>{seatsLabel} still held for you</span>
+            <span>
+              {seatsLabel} {seatsLabel.startsWith('Seats') ? 'are' : 'is'} still held for you
+            </span>
             <span className="font-mono font-semibold text-gold">{mmss(secondsLeft)}</span>
           </div>
         )}
         <div>
           <h2 className="m-0 mb-2 text-base font-semibold">Common reasons</h2>
-          <ul className="m-0 flex flex-col gap-1 pl-5 text-muted">
+          <ul className="m-0 flex list-disc flex-col gap-1 pl-5 text-muted">
             {reasons.map((r) => (
-              <li key={r}>{r}</li>
+              <li key={r.long}>
+                <span className="lg:hidden">{r.short}</span>
+                <span className="hidden lg:inline">{r.long}</span>
+              </li>
             ))}
           </ul>
         </div>

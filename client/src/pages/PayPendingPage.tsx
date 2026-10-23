@@ -42,7 +42,7 @@ export function PayPendingPage() {
       step="Pay"
       back={{ to: `/trips/${trip.id}/pay`, label: 'Back to payment' }}
       title={null}
-      mobile={{ title: 'Approve payment' }}
+      mobile={{ title: 'Step 3 of 4 · Pay', asHeading: false }}
     >
       <div className="mx-auto flex max-w-[640px] flex-col gap-3.5 md:gap-5 md:pt-6">
         <PaymentPendingCard
@@ -56,7 +56,10 @@ export function PayPendingPage() {
           <div className="rounded-2xl border border-line bg-surface p-[18px]">
             <h2 className="m-0 mb-1.5 text-base font-semibold">No prompt on your phone?</h2>
             <p className="m-0 text-[15px] text-muted">
-              Check that the number is right and the phone has signal. Some networks let you find pending approvals in the mobile money menu.
+              <span className="lg:hidden">Check the number and signal. Some networks show pending approvals in the mobile money menu.</span>
+              <span className="hidden lg:inline">
+                Check that the number is right and the phone has signal. Some networks let you find pending approvals in the mobile money menu.
+              </span>
             </p>
           </div>
           <HeldSeatsStrip

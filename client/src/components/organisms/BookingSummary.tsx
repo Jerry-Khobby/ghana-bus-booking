@@ -62,7 +62,7 @@ export function BookingSummary({ trip, seats, passengers, secondsLeft }: Booking
         <>
           <HoldTimer secondsLeft={secondsLeft} plural={seats.length > 1} />
           <ButtonLink to={`/trips/${trip.id}/pay`} size="lg">
-            Continue with {plural(seats.length, 'seat')}
+            Continue to payment
           </ButtonLink>
         </>
       ) : (
@@ -95,10 +95,12 @@ export function MobileSeatBar({ trip, seats, passengers, secondsLeft }: BookingS
       </div>
       {prompt === null ? (
         <ButtonLink to={`/trips/${trip.id}/pay`} size="lg">
-          Continue with {plural(seats.length, 'seat')}
+          Continue to payment
         </ButtonLink>
       ) : (
-        <p className="m-0 flex min-h-[52px] items-center justify-center rounded-xl bg-sunken font-semibold text-muted">{prompt}</p>
+        <p className="m-0 flex min-h-[52px] items-center justify-center rounded-xl bg-sunken font-semibold text-muted">
+          {passengers > 1 ? prompt : 'Tap a free seat'}
+        </p>
       )}
     </div>
   )

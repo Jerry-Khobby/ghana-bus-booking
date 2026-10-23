@@ -44,11 +44,22 @@ export function MyTicketsPage() {
       <div className="flex flex-col gap-4 pb-4 pt-5 md:gap-5 md:pt-8">
         <PageHeader
           title="My tickets"
-          subtitle={passenger ? `Tickets bought with ${maskedIntl(passenger.phone)}` : 'Tickets bought on this device'}
+          subtitle={
+            passenger ? (
+              <>
+                <span className="lg:hidden">
+                  {passenger.name} · {maskedIntl(passenger.phone)}
+                </span>
+                <span className="hidden lg:inline">Tickets bought with {maskedIntl(passenger.phone)}</span>
+              </>
+            ) : (
+              'Tickets bought on this device'
+            )
+          }
           action={
-            <ButtonLink to="/trips" className="hidden md:inline-flex">
-              Book a trip
-            </ButtonLink>
+            <div className="hidden md:block">
+              <ButtonLink to="/trips">Book a trip</ButtonLink>
+            </div>
           }
         />
 
