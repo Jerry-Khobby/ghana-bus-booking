@@ -1,7 +1,6 @@
-
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -27,6 +26,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      # Inside the compose network the database host is "postgres", not localhost
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
     ports:
       - "3000:3000"

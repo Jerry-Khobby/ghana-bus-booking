@@ -1,0 +1,20 @@
+# Installed and built inside the image — never send the host's copies
+node_modules
+dist
+src/generated
+coverage
+*.tsbuildinfo
+
+# Secrets stay on the host; compose passes what the container needs
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+.vscode
+.idea
+*.md
+Dockerfile
+docker-compose*.yml
+.dockerignore
