@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { createObserveModule } from '@nestjs/observe';
-import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
+import { HealthModule } from './health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
@@ -22,9 +21,10 @@ const { OBSERVE_APP_KEY, OBSERVE_APP_SECRET } = process.env;
           }),
         ]
       : []),
+
+    // Infrastructure
     PrismaModule,
+    HealthModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}

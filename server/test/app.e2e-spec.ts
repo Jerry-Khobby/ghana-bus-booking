@@ -4,7 +4,8 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module.js';
 
-describe('AppController (e2e)', () => {
+// Needs the database: `npm run db:up` first.
+describe('Health (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
@@ -13,14 +14,22 @@ describe('AppController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.setGlobalPrefix('api/v1');
     await app.init();
   });
 
-  it('/ (GET)', () => {
+  it('/api/v1/health (GET)', () => {
     return request(app.getHttpServer())
-      .get('/')
+      .get('/api/v1/health')
       .expect(200)
-      .expect('Hello World!');
+      .expect({ status: 'ok' });
+  });
+
+  it('/api/v1/health/ready (GET)', () => {
+    return request(app.getHttpServer())
+      .get('/api/v1/health/ready')
+      .expect(200)
+      .expect({ status: 'ok', database: 'up' });
   });
 
   afterEach(async () => {
