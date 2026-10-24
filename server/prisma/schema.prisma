@@ -1,0 +1,649 @@
+// Seatline data model. Source of truth: "Data model" in the backend plan.
+//
+// Conventions
+// - Primary keys are UUID v7 (sortable by creation time).
+// - Money is integer pesewas (GH¢ 1.00 = 100). Never floats.
+// - Every timestamp is timestamptz, stored in UTC.
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+  generatedFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum OperatorStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum StaffRole {
+  AGENT
+  OPERATOR_ADMIN
+  PLATFORM_ADMIN
+}
+
+enum StaffStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+enum BusType {
+  AC_COACH
+  STANDARD
+  MINIBUS
+}
+
+enum BusStatus {
+  ACTIVE
+  IN_WORKSHOP
+  RETIRED
+}
+
+enum CellType {
+  SEAT
+  AISLE
+  DRIVER
+  DOOR
+  EMPTY
+}
+
+enum DepartureMode {
+  FIXED_TIME
+  WHEN_FULL
+}
+
+enum TripStatus {
+  SCHEDULED
+  LOADING
+  FULL
+  DEPARTED
+  CANCELLED
+}
+
+enum SeatStatus {
+  AVAILABLE
+  HELD
+  SOLD
+  BLOCKED
+}
+
+enum BookingChannel {
+  ONLINE
+  WALK_IN
+}
+
+enum BookingStatus {
+  HELD
+  PENDING_PAYMENT
+  CONFIRMED
+  BOARDED
+  NO_SHOW
+  EXPIRED
+  CANCELLED
+  REFUND_PENDING
+  REFUNDED
+}
+
+enum PaymentMethod {
+  MOMO
+  CARD
+  CASH
+}
+
+enum MomoNetwork {
+  MTN
+  TELECEL
+  AIRTELTIGO
+}
+
+enum PaymentProvider {
+  PAYSTACK
+  FAKE
+  CASH
+}
+
+enum PaymentStatus {
+  INITIATED
+  PENDING
+  SUCCESS
+  FAILED
+  ABANDONED
+}
+
+enum ScanResult {
+  VALID
+  BOARDED
+  REJECTED
+}
+
+enum ScanRejectReason {
+  BAD_SIGNATURE
+  NOT_FOUND
+  WRONG_TRIP
+  NOT_PAID
+  ALREADY_BOARDED
+  TRIP_DEPARTED
+  CANCELLED
+}
+
+enum TokenType {
+  INVITE
+  PASSWORD_RESET
+}
+
+enum SubjectType {
+  PASSENGER
+  STAFF
+}
+
+enum MessageChannel {
+  EMAIL
+  SMS
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+// ─── Operators and places ────────────────────────────────────────────────────
+
+/// A bus company on the platform.
+model Operator {
+  id                String         @id @default(uuid(7)) @db.Uuid
+  name              String
+  slug              String         @unique
+  phone             String?
+  email             String?
+  serviceFeePesewas Int            @default(100)
+  holdMinutes       Int            @default(5)
+  status            OperatorStatus @default(ACTIVE)
+  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
+
+  bays        Bay[]
+  routes      Route[]
+  seatLayouts SeatLayout[]
+  buses       Bus[]
+  trips       Trip[]
+  staff       StaffUser[]
+  bookings    Booking[]
+  cashEntries CashEntry[]
+  auditLogs   AuditLog[]
+}
+
+/// A bus terminal, shared by all operators.
+model Station {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String
+  city      String
+  region    String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  bays       Bay[]
+  routesFrom Route[]     @relation("RouteOrigin")
+  routesTo   Route[]     @relation("RouteDestination")
+  staff      StaffUser[]
+
+  @@unique([city, name])
+  @@index([city])
+}
+
+/// A loading bay an operator uses at a station.
+model Bay {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  operatorId String   @db.Uuid
+  stationId  String   @db.Uuid
+  number     Int
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  operator Operator   @relation(fields: [operatorId], references: [id])
+  station  Station    @relation(fields: [stationId], references: [id])
+  trips    Trip[]
+  agents   AgentBay[]
+
+  @@unique([operatorId, stationId, number])
+}
+
+/// A station-to-station line with a base fare.
+/// Origin ≠ destination is enforced by a check constraint in the migration.
+model Route {
+  id                   String   @id @default(uuid(7)) @db.Uuid
+  operatorId           String   @db.Uuid
+  originStationId      String   @db.Uuid
+  destinationStationId String   @db.Uuid
+  baseFarePesewas      Int
+  durationMinutes      Int?
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
+
+  operator           Operator @relation(fields: [operatorId], references: [id])
+  originStation      Station  @relation("RouteOrigin", fields: [originStationId], references: [id])
+  destinationStation Station  @relation("RouteDestination", fields: [destinationStationId], references: [id])
+  trips              Trip[]
+
+  @@unique([operatorId, originStationId, destinationStationId])
+}
+
+// ─── Fleet ───────────────────────────────────────────────────────────────────
+
+/// A seat plan drawn in the layout editor.
+model SeatLayout {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  operatorId String    @db.Uuid
+  name       String
+  rows       Int
+  cols       Int
+  /// Array of { r, c, type: CellType, label }; label only on SEAT cells.
+  cells      Json
+  seatCount  Int
+  version    Int       @default(1)
+  archivedAt DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
+
+  operator Operator @relation(fields: [operatorId], references: [id])
+  buses    Bus[]
+
+  @@unique([operatorId, name, version])
+}
+
+model Bus {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  operatorId      String    @db.Uuid
+  /// Stored uppercase, e.g. "GR 4471-24".
+  plate           String    @unique
+  type            BusType
+  layoutId        String    @db.Uuid
+  status          BusStatus @default(ACTIVE)
+  backInServiceOn DateTime? @db.Date
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  operator Operator   @relation(fields: [operatorId], references: [id])
+  layout   SeatLayout @relation(fields: [layoutId], references: [id])
+  trips    Trip[]
+}
+
+// ─── Trips and seats ─────────────────────────────────────────────────────────
+
+model Trip {
+  id                String        @id @default(uuid(7)) @db.Uuid
+  operatorId        String        @db.Uuid
+  routeId           String        @db.Uuid
+  busId             String        @db.Uuid
+  bayId             String        @db.Uuid
+  mode              DepartureMode
+  departureAt       DateTime?     @db.Timestamptz(3)
+  loadingStartsAt   DateTime?     @db.Timestamptz(3)
+  leaveBy           DateTime?     @db.Timestamptz(3)
+  farePesewas       Int
+  status            TripStatus    @default(SCHEDULED)
+  onlineBookingOpen Boolean       @default(true)
+  seatsTotal        Int
+  seatsSold         Int           @default(0)
+  /// Copy of the layout cells at creation, so later layout edits never change this trip.
+  layoutSnapshot    Json
+  departedAt        DateTime?     @db.Timestamptz(3)
+  cancelledAt       DateTime?     @db.Timestamptz(3)
+  cancelReason      String?
+  createdById       String        @db.Uuid
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+
+  operator  Operator   @relation(fields: [operatorId], references: [id])
+  route     Route      @relation(fields: [routeId], references: [id])
+  bus       Bus        @relation(fields: [busId], references: [id])
+  bay       Bay        @relation(fields: [bayId], references: [id])
+  createdBy StaffUser  @relation("TripCreatedBy", fields: [createdById], references: [id])
+  seats     TripSeat[]
+  bookings  Booking[]
+  scanLogs  ScanLog[]
+
+  @@index([routeId, departureAt])
+  @@index([bayId, status])
+  @@index([operatorId, status, departureAt])
+}
+
+/// One row per seat per trip, so taking a seat is one conditional update.
+model TripSeat {
+  id            String     @id @default(uuid(7)) @db.Uuid
+  tripId        String     @db.Uuid
+  label         String
+  row           Int
+  col           Int
+  status        SeatStatus @default(AVAILABLE)
+  holdExpiresAt DateTime?  @db.Timestamptz(3)
+  /// The booking currently holding or owning this seat.
+  bookingId     String?    @unique @db.Uuid
+  createdAt     DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime   @updatedAt @db.Timestamptz(3)
+
+  trip     Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  booking  Booking?  @relation("SeatCurrentBooking", fields: [bookingId], references: [id], onDelete: SetNull)
+  /// Every booking ever made for this seat, including expired ones.
+  bookings Booking[] @relation("SeatBookings")
+
+  @@unique([tripId, label])
+  @@index([tripId, status])
+}
+
+// ─── People and access ───────────────────────────────────────────────────────
+
+model Passenger {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  /// Stored lowercase; how they sign in.
+  email       String    @unique
+  /// E.164; pre-fills the mobile money number.
+  phone       String?
+  name        String?
+  lastLoginAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  bookings Booking[]
+}
+
+/// Agents, operator admins and platform admins.
+model StaffUser {
+  id           String      @id @default(uuid(7)) @db.Uuid
+  /// Null only for PLATFORM_ADMIN.
+  operatorId   String?     @db.Uuid
+  role         StaffRole
+  /// Stored lowercase.
+  email        String      @unique
+  name         String
+  /// argon2id; null until the invite is accepted.
+  passwordHash String?
+  status       StaffStatus @default(INVITED)
+  /// Required for AGENT.
+  stationId    String?     @db.Uuid
+  failedLogins Int         @default(0)
+  lockedUntil  DateTime?   @db.Timestamptz(3)
+  lastActiveAt DateTime?   @db.Timestamptz(3)
+  createdAt    DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime    @updatedAt @db.Timestamptz(3)
+
+  operator          Operator?    @relation(fields: [operatorId], references: [id])
+  station           Station?     @relation(fields: [stationId], references: [id])
+  bays              AgentBay[]
+  tokens            StaffToken[]
+  tripsCreated      Trip[]       @relation("TripCreatedBy")
+  bookingsSold      Booking[]    @relation("BookingSoldBy")
+  bookingsBoarded   Booking[]    @relation("BookingBoardedBy")
+  paymentsInitiated Payment[]
+  cashTaken         CashEntry[]  @relation("CashAgent")
+  cashSettled       CashEntry[]  @relation("CashSettledBy")
+  scanLogs          ScanLog[]
+}
+
+/// Which bays an agent works.
+model AgentBay {
+  staffUserId String   @db.Uuid
+  bayId       String   @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  staffUser StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+  bay       Bay       @relation(fields: [bayId], references: [id], onDelete: Cascade)
+
+  @@id([staffUserId, bayId])
+}
+
+model OtpCode {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  /// Lowercase.
+  email      String
+  /// SHA-256 of code + pepper; the code itself is never stored.
+  codeHash   String
+  expiresAt  DateTime  @db.Timestamptz(3)
+  attempts   Int       @default(0)
+  consumedAt DateTime? @db.Timestamptz(3)
+  ip         String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([email, createdAt])
+}
+
+model RefreshToken {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  subjectType SubjectType
+  /// The passenger or staff id (no FK: it points at either table).
+  subjectId   String      @db.Uuid
+  tokenHash   String      @unique
+  /// All rotations of one login share it.
+  familyId    String      @db.Uuid
+  expiresAt   DateTime    @db.Timestamptz(3)
+  revokedAt   DateTime?   @db.Timestamptz(3)
+  userAgent   String?
+  ip          String?
+  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime    @updatedAt @db.Timestamptz(3)
+
+  @@index([subjectType, subjectId])
+  @@index([familyId])
+}
+
+/// Invite and password-reset links.
+model StaffToken {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  staffUserId String    @db.Uuid
+  type        TokenType
+  tokenHash   String    @unique
+  expiresAt   DateTime  @db.Timestamptz(3)
+  usedAt      DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  staffUser StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+}
+
+// ─── Money and tickets ───────────────────────────────────────────────────────
+
+/// One seat on one trip; it is the ticket once confirmed.
+model Booking {
+  id            String         @id @default(uuid(7)) @db.Uuid
+  /// e.g. "SL-7Q4K-2M" (Crockford base32).
+  code          String         @unique
+  operatorId    String         @db.Uuid
+  tripId        String         @db.Uuid
+  tripSeatId    String         @db.Uuid
+  seatLabel     String
+  /// Null for guests.
+  passengerId   String?        @db.Uuid
+  contactEmail  String?
+  contactPhone  String?
+  passengerName String?
+  channel       BookingChannel
+  /// Walk-ins only.
+  soldById      String?        @db.Uuid
+  status        BookingStatus  @default(HELD)
+  farePesewas   Int
+  feePesewas    Int
+  totalPesewas  Int
+  holdExpiresAt DateTime?      @db.Timestamptz(3)
+  holdTokenHash String?
+  confirmedAt   DateTime?      @db.Timestamptz(3)
+  boardedAt     DateTime?      @db.Timestamptz(3)
+  cancelledAt   DateTime?      @db.Timestamptz(3)
+  boardedById   String?        @db.Uuid
+  qrNonce       String
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @db.Timestamptz(3)
+
+  operator    Operator          @relation(fields: [operatorId], references: [id])
+  trip        Trip              @relation(fields: [tripId], references: [id])
+  tripSeat    TripSeat          @relation("SeatBookings", fields: [tripSeatId], references: [id])
+  passenger   Passenger?        @relation(fields: [passengerId], references: [id])
+  soldBy      StaffUser?        @relation("BookingSoldBy", fields: [soldById], references: [id])
+  boardedBy   StaffUser?        @relation("BookingBoardedBy", fields: [boardedById], references: [id])
+  /// Set while this booking is the one holding or owning the seat.
+  currentSeat TripSeat?         @relation("SeatCurrentBooking")
+  payments    Payment[]
+  cashEntry   CashEntry?
+  scanLogs    ScanLog[]
+  messages    OutboundMessage[]
+
+  @@index([passengerId, createdAt])
+  @@index([contactEmail])
+  @@index([tripId, status])
+}
+
+/// Every attempt to pay for a booking; a booking can have several.
+model Payment {
+  id              String          @id @default(uuid(7)) @db.Uuid
+  bookingId       String          @db.Uuid
+  method          PaymentMethod
+  /// MOMO only.
+  network         MomoNetwork?
+  /// MOMO only, E.164.
+  payerPhone      String?
+  /// Must equal the booking total.
+  amountPesewas   Int
+  provider        PaymentProvider
+  /// Our reference sent to the provider.
+  providerRef     String          @unique
+  status          PaymentStatus   @default(INITIATED)
+  failureCode     String?
+  failureMessage  String?
+  /// Last raw provider response, for support.
+  providerPayload Json?
+  /// Walk-ins only.
+  initiatedById   String?         @db.Uuid
+  paidAt          DateTime?       @db.Timestamptz(3)
+  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime        @updatedAt @db.Timestamptz(3)
+
+  booking     Booking    @relation(fields: [bookingId], references: [id])
+  initiatedBy StaffUser? @relation(fields: [initiatedById], references: [id])
+
+  @@index([bookingId])
+  @@index([status, createdAt])
+}
+
+/// Cash an agent took for a walk-in.
+model CashEntry {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  bookingId     String    @unique @db.Uuid
+  agentId       String    @db.Uuid
+  operatorId    String    @db.Uuid
+  amountPesewas Int
+  /// Set when the admin marks the cash collected.
+  settledAt     DateTime? @db.Timestamptz(3)
+  settledById   String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  booking   Booking    @relation(fields: [bookingId], references: [id])
+  agent     StaffUser  @relation("CashAgent", fields: [agentId], references: [id])
+  operator  Operator   @relation(fields: [operatorId], references: [id])
+  settledBy StaffUser? @relation("CashSettledBy", fields: [settledById], references: [id])
+
+  @@index([operatorId, agentId, settledAt])
+}
+
+// ─── Logs and plumbing ───────────────────────────────────────────────────────
+
+/// Every scan, good or bad; feeds no-show and fraud checks.
+model ScanLog {
+  id        String            @id @default(uuid(7)) @db.Uuid
+  tripId    String            @db.Uuid
+  staffId   String            @db.Uuid
+  bookingId String?           @db.Uuid
+  result    ScanResult
+  reason    ScanRejectReason?
+  createdAt DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime          @updatedAt @db.Timestamptz(3)
+
+  trip    Trip      @relation(fields: [tripId], references: [id])
+  staff   StaffUser @relation(fields: [staffId], references: [id])
+  booking Booking?  @relation(fields: [bookingId], references: [id])
+
+  @@index([tripId, createdAt])
+}
+
+/// Outbox for email (and SMS later); sent right after commit, retried by the tick.
+model OutboundMessage {
+  id        String         @id @default(uuid(7)) @db.Uuid
+  channel   MessageChannel
+  to        String
+  template  String
+  subject   String?
+  body      String
+  status    MessageStatus  @default(QUEUED)
+  attempts  Int            @default(0)
+  lastError String?
+  bookingId String?        @db.Uuid
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime       @updatedAt @db.Timestamptz(3)
+
+  booking Booking? @relation(fields: [bookingId], references: [id])
+
+  @@index([status, createdAt])
+}
+
+/// Stops a webhook being processed twice.
+model WebhookEvent {
+  id          String          @id @default(uuid(7)) @db.Uuid
+  provider    PaymentProvider
+  eventId     String
+  type        String
+  payload     Json
+  processedAt DateTime?       @db.Timestamptz(3)
+  error       String?
+  createdAt   DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime        @updatedAt @db.Timestamptz(3)
+
+  @@unique([provider, eventId])
+}
+
+/// Replays the first response for repeated pay requests.
+model IdempotencyKey {
+  key          String   @id
+  scope        String
+  requestHash  String
+  statusCode   Int
+  responseBody Json
+  expiresAt    DateTime @db.Timestamptz(3)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([expiresAt])
+}
+
+/// Who changed fares, trips, agents.
+model AuditLog {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  operatorId String?  @db.Uuid
+  /// PASSENGER, STAFF or SYSTEM (the tick).
+  actorType  String
+  actorId    String?  @db.Uuid
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  ip         String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  operator Operator? @relation(fields: [operatorId], references: [id])
+
+  @@index([operatorId, createdAt])
+  @@index([entityType, entityId])
+}
