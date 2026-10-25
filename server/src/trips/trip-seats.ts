@@ -1,4 +1,5 @@
-import { CellType } from '../generated/prisma/enums.js';
+import { CellType, SeatStatus } from '../generated/prisma/enums.js';
+import type { Prisma } from '../generated/prisma/client.js';
 
 /** One square of a seat layout grid, as stored in SeatLayout.cells. */
 export interface LayoutCell {
@@ -36,4 +37,69 @@ export function seatsFromLayout(cells: LayoutCell[]): TripSeatInput[] {
       }
       return { label: cell.label, row: cell.r, col: cell.c };
     });
+}
+
+// ─── Availability ────────────────────────────────────────────────────────────
+// A HELD seat whose hold has run out is free, even before
+// BookingsService.expireStaleHolds() gets round to releasing it.
+
+/** Prisma filter for seats a passenger can take right now. */
+export function availableSeatWhere(now: Date): Prisma.TripSeatWhereInput {
+  return {
+    OR: [
+      { status: SeatStatus.AVAILABLE },
+      { status: SeatStatus.HELD, holdExpiresAt: { lt: now } },
+    ],
+  };
+}
+
+/** The status a passenger should see for one seat. */
+export function effectiveSeatStatus(
+  seat: { status: SeatStatus; holdExpiresAt: Date | null },
+  now: Date,
+): SeatStatus {
+  const holdRanOut =
+    seat.status === SeatStatus.HELD &&
+    seat.holdExpiresAt !== null &&
+    seat.holdExpiresAt < now;
+  return holdRanOut ? SeatStatus.AVAILABLE : seat.status;
+}
+
+export interface SeatMapCell extends LayoutCell {
+  /** Only on SEAT cells. */
+  status?: SeatStatus;
+}
+
+export interface SeatMap {
+  rows: number;
+  cols: number;
+  cells: SeatMapCell[];
+}
+
+/**
+ * The trip's layout with each seat's live status merged in. Only the status
+ * goes out: never who holds or bought a seat.
+ */
+export function buildSeatMap(
+  snapshot: LayoutSnapshot,
+  seats: { label: string; status: SeatStatus; holdExpiresAt: Date | null }[],
+  now: Date,
+): SeatMap {
+  const statusByLabel = new Map(
+    seats.map((seat) => [seat.label, effectiveSeatStatus(seat, now)]),
+  );
+
+  return {
+    rows: snapshot.rows,
+    cols: snapshot.cols,
+    cells: snapshot.cells.map((cell) =>
+      cell.type === CellType.SEAT && cell.label
+        ? {
+            ...cell,
+            // A seat in the snapshot with no TripSeat row can't be sold
+            status: statusByLabel.get(cell.label) ?? SeatStatus.BLOCKED,
+          }
+        : cell,
+    ),
+  };
 }
