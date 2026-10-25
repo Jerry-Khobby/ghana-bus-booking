@@ -65,9 +65,12 @@ export function effectiveSeatStatus(
   return holdRanOut ? SeatStatus.AVAILABLE : seat.status;
 }
 
+/** MINE: the seat the caller is holding. */
+export type SeatMapStatus = SeatStatus | 'MINE';
+
 export interface SeatMapCell extends LayoutCell {
   /** Only on SEAT cells. */
-  status?: SeatStatus;
+  status?: SeatMapStatus;
 }
 
 export interface SeatMap {
@@ -78,15 +81,21 @@ export interface SeatMap {
 
 /**
  * The trip's layout with each seat's live status merged in. Only the status
- * goes out: never who holds or bought a seat.
+ * goes out: never who holds or bought a seat. `mineLabel` is the seat the
+ * caller holds, shown as MINE while the hold lasts.
  */
 export function buildSeatMap(
   snapshot: LayoutSnapshot,
   seats: { label: string; status: SeatStatus; holdExpiresAt: Date | null }[],
   now: Date,
+  mineLabel?: string,
 ): SeatMap {
   const statusByLabel = new Map(
-    seats.map((seat) => [seat.label, effectiveSeatStatus(seat, now)]),
+    seats.map((seat): [string, SeatMapStatus] => {
+      const status = effectiveSeatStatus(seat, now);
+      const mine = seat.label === mineLabel && status === SeatStatus.HELD;
+      return [seat.label, mine ? 'MINE' : status];
+    }),
   );
 
   return {

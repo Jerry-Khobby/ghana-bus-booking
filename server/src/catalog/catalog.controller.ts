@@ -2,11 +2,13 @@ import {
   Controller,
   Get,
   Header,
+  Headers,
   Param,
   ParseUUIDPipe,
   Query,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiHeader, ApiTags } from '@nestjs/swagger';
+import { HOLD_TOKEN_HEADER } from '../bookings/hold-token.guard.js';
 import { CatalogService } from './catalog.service.js';
 import { SearchTripsQueryDto } from './dto/search-trips-query.dto.js';
 import { StationsQueryDto } from './dto/stations-query.dto.js';
@@ -39,7 +41,15 @@ export class CatalogController {
 
   /** Pick a seat. */
   @Get('trips/:id/seats')
-  getSeatMap(@Param('id', ParseUUIDPipe) id: string) {
-    return this.catalogService.getSeatMap(id);
+  @ApiHeader({
+    name: 'X-Hold-Token',
+    required: false,
+    description: 'Your hold token; your held seat comes back as MINE',
+  })
+  getSeatMap(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Headers(HOLD_TOKEN_HEADER) holdToken?: string,
+  ) {
+    return this.catalogService.getSeatMap(id, holdToken);
   }
 }

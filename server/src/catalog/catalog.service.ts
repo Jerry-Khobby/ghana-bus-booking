@@ -2,10 +2,13 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppException } from '../common/errors/app.exception.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
+  BookingStatus,
   DepartureMode,
   OperatorStatus,
   TripStatus,
 } from '../generated/prisma/enums.js';
+import { BookingsService } from '../bookings/bookings.service.js';
+import { hashHoldToken } from '../bookings/hold-token.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   availableSeatWhere,
@@ -66,6 +69,7 @@ export class CatalogService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly trips: TripsService,
+    private readonly bookings: BookingsService,
   ) {}
 
   listStations({ q }: StationsQueryDto) {
@@ -197,8 +201,10 @@ export class CatalogService {
     };
   }
 
-  async getSeatMap(id: string) {
-    await this.trips.refreshStatus(id);
+  /** `holdToken` (X-Hold-Token) marks the caller's own held seat as MINE. */
+  async getSeatMap(id: string, holdToken?: string) {
+    const now = new Date();
+    await this.trips.refreshStatus(id, now);
     const trip = await this.prisma.trip.findFirst({
       where: { id, status: { not: TripStatus.CANCELLED } },
       select: {
@@ -207,12 +213,24 @@ export class CatalogService {
       },
     });
     if (!trip) throw tripNotFound();
+    await this.bookings.expireStaleHolds(this.prisma, id, now);
 
-    // TODO(phase 2): return the caller's own held seat as "MINE".
+    const mine = holdToken
+      ? await this.prisma.booking.findFirst({
+          where: {
+            tripId: id,
+            holdTokenHash: hashHoldToken(holdToken),
+            status: { in: [BookingStatus.HELD, BookingStatus.PENDING_PAYMENT] },
+          },
+          select: { seatLabel: true },
+        })
+      : null;
+
     return buildSeatMap(
       trip.layoutSnapshot as unknown as LayoutSnapshot,
       trip.seats,
-      new Date(),
+      now,
+      mine?.seatLabel,
     );
   }
 

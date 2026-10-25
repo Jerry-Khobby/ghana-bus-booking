@@ -92,6 +92,27 @@ describe('buildSeatMap', () => {
     });
   });
 
+  it("shows the caller's own held seat as MINE", () => {
+    const seats = [
+      { label: '1', status: 'HELD' as const, holdExpiresAt: minutes(3) },
+      { label: '2', status: 'HELD' as const, holdExpiresAt: minutes(3) },
+    ];
+    const statuses = (map: { cells: { status?: string }[] }) => [
+      map.cells[3].status,
+      map.cells[5].status,
+    ];
+
+    expect(statuses(buildSeatMap(snapshot, seats, NOW, '1'))).toEqual([
+      'MINE',
+      'HELD',
+    ]);
+    // Once the hold runs out the seat is just available again
+    expect(statuses(buildSeatMap(snapshot, seats, minutes(5), '1'))).toEqual([
+      'AVAILABLE',
+      'AVAILABLE',
+    ]);
+  });
+
   it('blocks a seat that has no TripSeat row', () => {
     const map = buildSeatMap(
       snapshot,
