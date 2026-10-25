@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { createObserveModule } from '@nestjs/observe';
 import { AdminModule } from './admin/admin.module.js';
 import { AgentModule } from './agent/agent.module.js';
@@ -6,6 +7,7 @@ import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { BookingsModule } from './bookings/bookings.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { HealthModule } from './health/health.module.js';
 import { MessagesModule } from './messages/messages.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
@@ -61,6 +63,10 @@ const { OBSERVE_APP_KEY, OBSERVE_APP_SECRET } = process.env;
     RealtimeModule,
     AuditModule,
     TickModule,
+  ],
+  providers: [
+    // Every error leaves the API as { error: { code, message, details } }
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })
 export class AppModule {}

@@ -32,6 +32,19 @@ describe('Health (e2e)', () => {
       .expect({ status: 'ok', database: 'up' });
   });
 
+  it('unknown routes return the standard error shape', () => {
+    return request(app.getHttpServer())
+      .get('/api/v1/does-not-exist')
+      .expect(404)
+      .expect({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Cannot GET /api/v1/does-not-exist',
+          details: {},
+        },
+      });
+  });
+
   afterEach(async () => {
     await app.close();
   });
