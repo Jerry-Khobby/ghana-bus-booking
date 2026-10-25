@@ -9,6 +9,7 @@ file is the map of where code goes.
 cp .env.example .env
 npm run db:up        # Postgres in Docker
 npm run db:migrate   # apply migrations, regenerate the Prisma client
+npm run db:seed      # demo data: Coastline Express, 6 trips (wipes the database)
 npm run start:dev    # API on http://localhost:3000/api/v1
 ```
 
@@ -65,4 +66,7 @@ goes in `src/common/` when the first piece of it is written.
 
 - Schema: `prisma/schema.prisma`; config: `prisma.config.ts`
 - After editing the schema: `npm run db:migrate` (asks for a migration name)
+- Demo data: `npm run db:seed` empties every table and rebuilds Coastline Express
+  (`prisma/seed.ts`). Staff accounts such as `admin@coastline.example` and
+  `kofi.a@coastline.example` use `SEED_PASSWORD` from `.env`.
 - Browse the data: `npm run db:studio`
