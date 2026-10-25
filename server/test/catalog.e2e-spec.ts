@@ -1,165 +1,68 @@
-import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { AppModule } from './../src/app.module.js';
 import { PrismaService } from './../src/prisma/prisma.service.js';
-import type { LayoutCell } from './../src/trips/trip-seats.js';
+import {
+  createFixture,
+  createTestApp,
+  isoDay,
+  minutesFromNow,
+  type Fixture,
+} from './fixtures.js';
 
 // Needs the database: `npm run db:up` first. The tests build their own
 // operator and stations, so they don't depend on the seed.
 describe('Catalog (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
-
-  const suffix = randomUUID().slice(0, 8);
+  let fx: Fixture;
+  let suffix: string;
   const ids = {} as Record<
-    'operator' | 'origin' | 'destination' | 'fixed' | 'whenFull' | 'cancelled',
+    'origin' | 'destination' | 'fixed' | 'whenFull' | 'cancelled',
     string
   >;
 
   // Trips are tomorrow so "now" never cuts into the test window.
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  const tomorrow = isoDay(1);
   const at = (time: string, day = tomorrow) => new Date(`${day}T${time}:00Z`);
 
-  const cells: LayoutCell[] = [
-    { r: 0, c: 0, type: 'SEAT', label: '1' },
-    { r: 0, c: 1, type: 'AISLE' },
-    { r: 0, c: 2, type: 'SEAT', label: '2' },
-    { r: 1, c: 0, type: 'SEAT', label: '3' },
-    { r: 1, c: 1, type: 'AISLE' },
-    { r: 1, c: 2, type: 'SEAT', label: '4' },
-  ];
-  const seat = (label: string, row: number, col: number) => ({
-    label,
-    row,
-    col,
-  });
-  const SEATS = [
-    seat('1', 0, 0),
-    seat('2', 0, 2),
-    seat('3', 1, 0),
-    seat('4', 1, 2),
-  ];
-
   beforeAll(async () => {
-    const moduleFixture = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api/v1');
-    await app.init();
-    prisma = app.get(PrismaService);
+    ({ app, prisma } = await createTestApp());
+    fx = await createFixture(prisma);
+    suffix = fx.suffix;
 
-    const operator = await prisma.operator.create({
-      data: { name: `Test Lines ${suffix}`, slug: `test-${suffix}` },
-    });
-    const [origin, destination] = await Promise.all([
-      prisma.station.create({
-        data: { name: 'North', city: `Testville ${suffix}`, region: 'Test' },
-      }),
-      prisma.station.create({
-        data: { name: 'South', city: `Testtown ${suffix}`, region: 'Test' },
-      }),
-    ]);
-    const layout = await prisma.seatLayout.create({
-      data: {
-        operatorId: operator.id,
-        name: 'Tiny',
-        rows: 2,
-        cols: 3,
-        cells: cells as never,
-        seatCount: 4,
-      },
-    });
-    const bus = await prisma.bus.create({
-      data: {
-        operatorId: operator.id,
-        plate: `TT ${suffix}`,
-        type: 'MINIBUS',
-        layoutId: layout.id,
-      },
-    });
-    const bay = await prisma.bay.create({
-      data: { operatorId: operator.id, stationId: origin.id, number: 1 },
-    });
-    const route = await prisma.route.create({
-      data: {
-        operatorId: operator.id,
-        originStationId: origin.id,
-        destinationStationId: destination.id,
-        baseFarePesewas: 5000,
-      },
-    });
-    const admin = await prisma.staffUser.create({
-      data: {
-        operatorId: operator.id,
-        role: 'OPERATOR_ADMIN',
-        email: `admin-${suffix}@test.example`,
-        name: 'Test Admin',
-      },
-    });
-
-    const trip = (data: Record<string, unknown>) =>
-      prisma.trip.create({
-        data: {
-          operatorId: operator.id,
-          routeId: route.id,
-          busId: bus.id,
-          bayId: bay.id,
-          farePesewas: 5000,
-          seatsTotal: 4,
-          layoutSnapshot: { rows: 2, cols: 3, cells } as never,
-          createdById: admin.id,
-          mode: 'FIXED_TIME',
-          ...data,
-          seats: { create: SEATS },
-        } as never,
-      });
-
-    const now = Date.now();
-    const fixed = await trip({
+    const fixed = await fx.createTrip({
       departureAt: at('10:00'),
       loadingStartsAt: at('09:00'),
     });
     // Seat 1 sold, 2 held but the hold ran out, 3 held right now, 4 free
-    await prisma.tripSeat.updateMany({
-      where: { tripId: fixed.id, label: '1' },
-      data: { status: 'SOLD' },
+    await fx.setSeat(fixed.id, '1', { status: 'SOLD' });
+    await fx.setSeat(fixed.id, '2', {
+      status: 'HELD',
+      holdExpiresAt: minutesFromNow(-1),
     });
-    await prisma.tripSeat.updateMany({
-      where: { tripId: fixed.id, label: '2' },
-      data: { status: 'HELD', holdExpiresAt: new Date(now - 60_000) },
-    });
-    await prisma.tripSeat.updateMany({
-      where: { tripId: fixed.id, label: '3' },
-      data: { status: 'HELD', holdExpiresAt: new Date(now + 5 * 60_000) },
+    await fx.setSeat(fixed.id, '3', {
+      status: 'HELD',
+      holdExpiresAt: minutesFromNow(5),
     });
 
-    const whenFull = await trip({
+    const whenFull = await fx.createTrip({
       mode: 'WHEN_FULL',
       status: 'LOADING',
       loadingStartsAt: at('08:00'),
       leaveBy: at('11:00'),
     });
-    const cancelled = await trip({
+    const cancelled = await fx.createTrip({
       departureAt: at('06:00'),
       status: 'CANCELLED',
     });
     // Neither of these should ever show up in tomorrow's search
-    await trip({ departureAt: at('12:00'), onlineBookingOpen: false });
-    const dayAfter = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
-    await trip({ departureAt: at('10:00', dayAfter) });
+    await fx.createTrip({ departureAt: at('12:00'), onlineBookingOpen: false });
+    await fx.createTrip({ departureAt: at('10:00', isoDay(2)) });
 
     Object.assign(ids, {
-      operator: operator.id,
-      origin: origin.id,
-      destination: destination.id,
+      origin: fx.origin.id,
+      destination: fx.destination.id,
       fixed: fixed.id,
       whenFull: whenFull.id,
       cancelled: cancelled.id,
@@ -167,19 +70,7 @@ describe('Catalog (e2e)', () => {
   });
 
   afterAll(async () => {
-    const operatorId = ids.operator;
-    if (operatorId) {
-      await prisma.trip.deleteMany({ where: { operatorId } }); // seats cascade
-      await prisma.route.deleteMany({ where: { operatorId } });
-      await prisma.bay.deleteMany({ where: { operatorId } });
-      await prisma.bus.deleteMany({ where: { operatorId } });
-      await prisma.seatLayout.deleteMany({ where: { operatorId } });
-      await prisma.staffUser.deleteMany({ where: { operatorId } });
-      await prisma.operator.delete({ where: { id: operatorId } });
-      await prisma.station.deleteMany({
-        where: { id: { in: [ids.origin, ids.destination] } },
-      });
-    }
+    await fx?.cleanup();
     await app.close();
   });
 

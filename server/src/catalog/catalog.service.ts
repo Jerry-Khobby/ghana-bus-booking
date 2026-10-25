@@ -12,6 +12,7 @@ import {
   buildSeatMap,
   type LayoutSnapshot,
 } from '../trips/trip-seats.js';
+import { isStatusStale, TripsService } from '../trips/trips.service.js';
 import { SearchTripsQueryDto } from './dto/search-trips-query.dto.js';
 import { StationsQueryDto } from './dto/stations-query.dto.js';
 
@@ -62,7 +63,10 @@ const stationSelect = {
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly trips: TripsService,
+  ) {}
 
   listStations({ q }: StationsQueryDto) {
     const search = q?.trim();
@@ -111,28 +115,40 @@ export class CatalogService {
       : dayStart;
     const inWindow = { gte: windowStart, lt: dayEnd };
 
-    const trips = await this.prisma.trip.findMany({
-      where: {
-        onlineBookingOpen: true,
-        status: query.loadingNow
-          ? TripStatus.LOADING
-          : { in: SEARCHABLE_STATUSES },
-        route: {
-          originStationId: query.from,
-          destinationStationId: query.to,
-          active: true,
-        },
-        operator: { status: OperatorStatus.ACTIVE },
-        ...(query.busType?.length && {
-          bus: { type: { in: query.busType } },
-        }),
-        OR: [
-          { mode: DepartureMode.FIXED_TIME, departureAt: inWindow },
-          { mode: DepartureMode.WHEN_FULL, loadingStartsAt: inWindow },
-        ],
+    const where: Prisma.TripWhereInput = {
+      onlineBookingOpen: true,
+      status: { in: SEARCHABLE_STATUSES },
+      route: {
+        originStationId: query.from,
+        destinationStationId: query.to,
+        active: true,
       },
+      operator: { status: OperatorStatus.ACTIVE },
+      ...(query.busType?.length && {
+        bus: { type: { in: query.busType } },
+      }),
+      OR: [
+        { mode: DepartureMode.FIXED_TIME, departureAt: inWindow },
+        { mode: DepartureMode.WHEN_FULL, loadingStartsAt: inWindow },
+      ],
+    };
+    let trips = await this.prisma.trip.findMany({
+      where,
       select: tripSummarySelect,
     });
+
+    // Bring statuses up to date with the clock, then read again if any moved
+    const stale = trips.filter((trip) => isStatusStale(trip, now));
+    if (stale.length) {
+      for (const trip of stale) await this.trips.refreshStatus(trip.id, now);
+      trips = await this.prisma.trip.findMany({
+        where,
+        select: tripSummarySelect,
+      });
+    }
+    if (query.loadingNow) {
+      trips = trips.filter((trip) => trip.status === TripStatus.LOADING);
+    }
 
     const seatsLeft = await this.countSeatsLeft(
       trips.map((t) => t.id),
@@ -149,6 +165,7 @@ export class CatalogService {
   }
 
   async getTrip(id: string) {
+    await this.trips.refreshStatus(id);
     const trip = await this.prisma.trip.findFirst({
       where: { id, status: { not: TripStatus.CANCELLED } },
       select: {
@@ -181,6 +198,7 @@ export class CatalogService {
   }
 
   async getSeatMap(id: string) {
+    await this.trips.refreshStatus(id);
     const trip = await this.prisma.trip.findFirst({
       where: { id, status: { not: TripStatus.CANCELLED } },
       select: {
