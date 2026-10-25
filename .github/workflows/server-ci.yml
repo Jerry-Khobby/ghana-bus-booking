@@ -1,0 +1,72 @@
+name: Server CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['server/**', '.github/workflows/server-ci.yml']
+  pull_request:
+    branches: [main]
+    paths: ['server/**', '.github/workflows/server-ci.yml']
+
+# A newer push to the same branch cancels the run still in progress
+concurrency:
+  group: server-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: server
+
+jobs:
+  check:
+    name: Lint, build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: seatline
+          POSTGRES_USER: seatline
+          POSTGRES_PASSWORD: seatline
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U seatline -d seatline"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://seatline:seatline@localhost:5432/seatline?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      # package-lock.json is written by npm 11; Node 22 ships npm 10, which
+      # reads it differently and makes `npm ci` fail (same fix as the Dockerfile)
+      - run: npm install -g npm@11.7.0
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - run: npm run lint
+
+      - run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: E2E tests
+        run: npm run test:e2e
