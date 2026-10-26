@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { BookingsModule } from './bookings/bookings.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
+import { IdempotencyModule } from './common/idempotency/idempotency.module.js';
 import { createValidationPipe } from './common/pipes/validation.pipe.js';
 import { HealthModule } from './health/health.module.js';
 import { MessagesModule } from './messages/messages.module.js';
@@ -42,6 +43,7 @@ const { OBSERVE_APP_KEY, OBSERVE_APP_SECRET } = process.env;
 
     // Infrastructure
     PrismaModule,
+    IdempotencyModule,
     HealthModule,
 
     // Passengers and the public catalog
