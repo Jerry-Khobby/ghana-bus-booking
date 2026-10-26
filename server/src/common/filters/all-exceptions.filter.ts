@@ -66,6 +66,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
+    // Rate limits tell the client when to come back
+    const retryAfter = details.retryAfterSeconds;
+    if (typeof retryAfter === 'number') {
+      httpAdapter.setHeader(
+        ctx.getResponse(),
+        'Retry-After',
+        String(retryAfter),
+      );
+    }
+
     httpAdapter.reply(
       ctx.getResponse(),
       { error: { code, message, details } },

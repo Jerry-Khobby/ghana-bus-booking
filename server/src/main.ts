@@ -7,6 +7,8 @@ import { AppModule, ObserveInstrument } from './app.module.js';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     instrument: ObserveInstrument,
+    // Keep the exact request bytes: Paystack signs the raw webhook body
+    rawBody: true,
   });
   // Every route lives under /api/v1 (see Conventions in the backend plan).
   // The validation pipe and error filter are registered in AppModule, so

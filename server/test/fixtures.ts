@@ -11,7 +11,9 @@ export async function createTestApp() {
   const moduleFixture = await Test.createTestingModule({
     imports: [AppModule],
   }).compile();
-  const app: INestApplication<App> = moduleFixture.createNestApplication();
+  const app: INestApplication<App> = moduleFixture.createNestApplication({
+    rawBody: true,
+  });
   app.setGlobalPrefix('api/v1');
   await app.init();
   return { app, prisma: app.get(PrismaService) };

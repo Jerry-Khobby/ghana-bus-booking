@@ -28,6 +28,9 @@ services:
       PORT: 3000
       # Inside the compose network the database host is "postgres", not localhost
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-paystack}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY}
+      PAYSTACK_CALLBACK_URL: ${PAYSTACK_CALLBACK_URL:-}
     ports:
       - "3000:3000"
     depends_on:
