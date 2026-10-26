@@ -12,7 +12,8 @@ interface FakeCharge {
 }
 
 /**
- * The "Test mode" provider from the design. No money moves:
+ * Stand-in provider for automated tests and CI (PAYMENT_PROVIDER=fake), so
+ * they never call Paystack. The running app uses PaystackProvider.
  * - mobile money numbers ending in 0000 succeed after a few seconds
  * - numbers ending in 1111 fail with "Not enough money in the wallet"
  * - any other number stays pending until the payment is abandoned

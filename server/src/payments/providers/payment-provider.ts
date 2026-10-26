@@ -9,19 +9,31 @@ export type FailureCode =
   | 'WRONG_PIN'
   | 'CARD_DECLINED'
   | 'PROVIDER_REFUSED'
+  | 'PROVIDER_DOWN'
   | 'AMOUNT_MISMATCH'
   | 'ABANDONED';
 
 /** What the provider says about a charge, from any path: charge, verify or webhook. */
 export type ChargeResult =
-  | { status: 'pending'; raw?: unknown }
+  | {
+      status: 'pending';
+      /** The provider's instructions for the payer, e.g. how to approve. */
+      displayText?: string;
+      raw?: unknown;
+    }
   | {
       status: 'success';
       amountPesewas: number;
       currency: string;
       raw?: unknown;
     }
-  | { status: 'failed'; failureCode: FailureCode; raw?: unknown };
+  | {
+      status: 'failed';
+      failureCode: FailureCode;
+      /** The provider's own reason, shown when we have no better message. */
+      message?: string;
+      raw?: unknown;
+    };
 
 export interface MomoCharge {
   reference: string;
@@ -42,8 +54,9 @@ export interface CardCharge {
 export class ProviderUnavailableError extends Error {}
 
 /**
- * Everything the app needs from a payment provider. PaystackProvider comes in
- * phase 8; FakeProvider stands in until then and in tests.
+ * Everything the app needs from a payment provider. PaystackProvider runs the
+ * app (in Paystack test mode); FakeProvider is for automated tests, which
+ * mustn't depend on Paystack being reachable.
  */
 export interface PaymentProvider {
   readonly name: 'PAYSTACK' | 'FAKE';
@@ -55,4 +68,6 @@ export interface PaymentProvider {
   ): Promise<ChargeResult & { authorizationUrl?: string }>;
   /** Asks the provider for the charge's current result. */
   verify(reference: string): Promise<ChargeResult>;
+  /** True if a webhook really came from the provider. */
+  verifyWebhook?(rawBody: Buffer, signature: string | undefined): boolean;
 }
