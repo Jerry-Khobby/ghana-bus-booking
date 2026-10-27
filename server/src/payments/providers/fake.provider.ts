@@ -48,6 +48,13 @@ export class FakeProvider implements PaymentProvider {
     };
   }
 
+  /** References refunded so far, for tests to inspect. */
+  readonly refunds: string[] = [];
+
+  async refund(reference: string): Promise<void> {
+    this.refunds.push(reference);
+  }
+
   async verify(reference: string): Promise<ChargeResult> {
     const charge = this.charges.get(reference);
     if (!charge || Date.now() - charge.startedAt < this.delayMs) {

@@ -105,6 +105,32 @@ describe('PaystackProvider', () => {
     );
   });
 
+  it('asks Paystack to refund a transaction in full', async () => {
+    const fetchMock = mockFetch(200, {
+      status: true,
+      message: 'Refund has been queued for processing',
+    });
+    await provider.refund('pay_1', 5100);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.paystack.co/refund');
+    expect(JSON.parse(init.body)).toMatchObject({
+      transaction: 'pay_1',
+      amount: 5100,
+      currency: 'GHS',
+    });
+  });
+
+  it('throws when Paystack refuses a refund', async () => {
+    mockFetch(400, {
+      status: false,
+      message: 'Transaction has been fully reversed',
+    });
+    await expect(provider.refund('pay_1', 5100)).rejects.toThrow(
+      'Paystack refused the refund: Transaction has been fully reversed',
+    );
+  });
+
   it('checks webhook signatures against the raw body', () => {
     const body = Buffer.from('{"event":"charge.success"}');
     const good = createHmac('sha512', SECRET).update(body).digest('hex');

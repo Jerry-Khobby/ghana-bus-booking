@@ -40,6 +40,8 @@ const VERIFY_ON_POLL_AFTER_MS = 30_000;
 const VERIFY_ON_POLL_EVERY_MS = 10_000;
 /** "I have approved it" can be pressed this often. */
 const VERIFY_BUTTON_EVERY_MS = 5_000;
+/** The tick checks payments that have been pending this long. */
+const SWEEP_AFTER_MS = 2 * 60_000;
 /** Still pending this long after it started: the payer gave up. */
 const ABANDON_AFTER_MS = 10 * 60_000;
 
@@ -231,6 +233,81 @@ export class PaymentsService {
     });
     await this.verifyWithProvider(providerRef);
     return this.describe(id);
+  }
+
+  /**
+   * The tick's sweep: payments pending over 2 minutes are checked with the
+   * provider, and those still pending after 10 minutes are abandoned.
+   * Returns how many were checked.
+   */
+  async sweepPending(now = new Date()): Promise<number> {
+    const pending = await this.prisma.payment.findMany({
+      where: {
+        status: { in: OPEN_PAYMENTS },
+        createdAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) },
+      },
+      select: { providerRef: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+      take: 50,
+    });
+    for (const payment of pending) {
+      await this.verifyWithProvider(payment.providerRef);
+      if (now.getTime() - payment.createdAt.getTime() >= ABANDON_AFTER_MS) {
+        await this.applyResult(payment.providerRef, {
+          status: 'failed',
+          failureCode: 'ABANDONED',
+        });
+      }
+    }
+    return pending.length;
+  }
+
+  /**
+   * The tick's refunds: for each REFUND_PENDING booking whose payment hasn't
+   * been sent back yet, asks the provider to refund it and records when, so
+   * it is never asked twice. Failures are retried on the next tick.
+   * TODO(phase 8): mark the booking REFUNDED from Paystack's refund webhook.
+   */
+  async requestRefunds(): Promise<number> {
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        status: PaymentStatus.SUCCESS,
+        booking: { status: BookingStatus.REFUND_PENDING },
+      },
+      select: {
+        id: true,
+        providerRef: true,
+        amountPesewas: true,
+        providerPayload: true,
+      },
+    });
+    let requested = 0;
+    for (const payment of payments) {
+      const payload = (payment.providerPayload ?? {}) as Record<
+        string,
+        unknown
+      >;
+      if (payload.refundRequestedAt) continue;
+      try {
+        await this.provider.refund(payment.providerRef, payment.amountPesewas);
+      } catch (error) {
+        this.logger.warn(
+          `Refund for ${payment.providerRef} failed: ${(error as Error).message}`,
+        );
+        continue;
+      }
+      await this.prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          providerPayload: {
+            ...payload,
+            refundRequestedAt: new Date().toISOString(),
+          } as Prisma.InputJsonValue,
+        },
+      });
+      requested++;
+    }
+    return requested;
   }
 
   /**

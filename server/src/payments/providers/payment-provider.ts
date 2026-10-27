@@ -68,6 +68,8 @@ export interface PaymentProvider {
   ): Promise<ChargeResult & { authorizationUrl?: string }>;
   /** Asks the provider for the charge's current result. */
   verify(reference: string): Promise<ChargeResult>;
+  /** Asks the provider to send the money back. Throws if it refuses. */
+  refund(reference: string, amountPesewas: number): Promise<void>;
   /** True if a webhook really came from the provider. */
   verifyWebhook?(rawBody: Buffer, signature: string | undefined): boolean;
 }

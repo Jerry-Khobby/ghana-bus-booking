@@ -115,6 +115,17 @@ export class PaystackProvider implements PaymentProvider {
     return toResult(res);
   }
 
+  async refund(reference: string, amountPesewas: number): Promise<void> {
+    const res = await this.request('POST', '/refund', {
+      transaction: reference,
+      amount: amountPesewas,
+      currency: 'GHS',
+      customer_note: 'Your seat was sold before your payment arrived',
+    });
+    if (!res.status)
+      throw new Error(`Paystack refused the refund: ${res.message}`);
+  }
+
   /** Paystack signs the raw body with HMAC-SHA512 using the secret key. */
   verifyWebhook(rawBody: Buffer, signature: string | undefined): boolean {
     if (!signature) return false;
