@@ -18,6 +18,7 @@ import {
   TripStatus,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TicketsService } from '../tickets/tickets.service.js';
 import { availableSeatWhere } from '../trips/trip-seats.js';
 import { PayHoldDto } from './dto/pay-hold.dto.js';
 import { FAILURE_MESSAGES } from './failure-messages.js';
@@ -68,6 +69,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly bookings: BookingsService,
     private readonly idempotency: IdempotencyService,
+    private readonly tickets: TicketsService,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
   ) {}
 
@@ -595,11 +597,26 @@ export class PaymentsService {
         failureMessage: true,
         providerPayload: true,
         booking: {
-          select: { code: true, status: true, holdExpiresAt: true },
+          select: {
+            code: true,
+            status: true,
+            holdExpiresAt: true,
+            trip: {
+              select: {
+                departureAt: true,
+                leaveBy: true,
+                loadingStartsAt: true,
+              },
+            },
+          },
         },
       },
     });
     const { booking } = payment;
+    // Paid and the seat is theirs: the screen can open the ticket
+    const ticketed =
+      payment.status === PaymentStatus.SUCCESS &&
+      booking.status === BookingStatus.CONFIRMED;
 
     const displayText =
       payment.method === PaymentMethod.MOMO &&
@@ -638,6 +655,10 @@ export class PaymentsService {
       // Opens the ticket once paid
       bookingCode:
         payment.status === PaymentStatus.SUCCESS ? booking.code : null,
+      // Opens /tickets/:code?t=… without an account
+      ticketToken: ticketed
+        ? this.tickets.linkToken(booking.code, booking.trip)
+        : null,
       secondsLeftOnHold,
     };
   }

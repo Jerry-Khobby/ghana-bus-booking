@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { BookingsModule } from '../bookings/bookings.module.js';
+import { TicketsModule } from '../tickets/tickets.module.js';
 import { PaymentOwnerGuard } from './payment-owner.guard.js';
 import { PaymentsController } from './payments.controller.js';
 import { PaymentsService } from './payments.service.js';
@@ -12,7 +13,7 @@ import { PAYMENT_PROVIDER } from './providers/payment-provider.js';
 // Routes: /holds/:id/pay, /payments/:id(/verify), /webhooks/paystack
 // (/payments/:id/stream comes with RealtimeModule in phase 8)
 @Module({
-  imports: [BookingsModule],
+  imports: [BookingsModule, TicketsModule],
   controllers: [PaymentsController],
   providers: [
     PaymentsService,
