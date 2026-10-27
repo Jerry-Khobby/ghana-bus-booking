@@ -10,7 +10,12 @@ export default defineConfig({
     // main.ts loads .env for the app; tests need it too (DATABASE_URL).
     setupFiles: ['dotenv/config'],
     // Tests never call Paystack; these win over .env (dotenv doesn't override)
-    env: { PAYMENT_PROVIDER: 'fake', FAKE_PAYMENT_DELAY_MS: '0' },
+    env: {
+      PAYMENT_PROVIDER: 'fake',
+      FAKE_PAYMENT_DELAY_MS: '0',
+      QR_SIGNING_SECRET: 'test-qr-secret',
+      TICKET_LINK_SECRET: 'test-ticket-link-secret',
+    },
     // One file at a time: each boots the whole app against the same database,
     // and running them all at once runs small machines out of memory
     fileParallelism: false,
