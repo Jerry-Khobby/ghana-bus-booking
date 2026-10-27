@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { createObserveModule } from '@nestjs/observe';
 import { AdminModule } from './admin/admin.module.js';
 import { AgentModule } from './agent/agent.module.js';
@@ -7,6 +7,7 @@ import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { BookingsModule } from './bookings/bookings.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
+import { JwtAuthGuard } from './common/auth/jwt-auth.guard.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { IdempotencyModule } from './common/idempotency/idempotency.module.js';
 import { createValidationPipe } from './common/pipes/validation.pipe.js';
@@ -72,6 +73,8 @@ const { OBSERVE_APP_KEY, OBSERVE_APP_SECRET } = process.env;
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     // DTOs are validated on every route; failures become VALIDATION_FAILED
     { provide: APP_PIPE, useFactory: createValidationPipe },
+    // Every route needs a valid access token unless marked @Public()
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
 })
 export class AppModule {}

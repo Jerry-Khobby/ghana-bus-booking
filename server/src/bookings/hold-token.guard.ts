@@ -8,14 +8,14 @@ import { isUUID } from 'class-validator';
 import type { Request } from 'express';
 import { AppException } from '../common/errors/app.exception.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { holdTokenMatches } from './hold-token.js';
+import { ownsBooking } from './hold-token.js';
 
 export const HOLD_TOKEN_HEADER = 'x-hold-token';
 
 /**
- * Lets only the hold's owner read or release it (`/holds/:id`). A wrong token
+ * Lets only the hold's owner read or release it (`/holds/:id`): the guest
+ * with its X-Hold-Token, or the signed-in passenger who made it. Anyone else
  * gets the same NOT_FOUND as a missing hold, so ids can't be probed.
- * TODO(phase 4): also accept a signed-in passenger who owns the booking.
  */
 @Injectable()
 export class HoldTokenGuard implements CanActivate {
@@ -23,33 +23,14 @@ export class HoldTokenGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
-    const id = request.params.id;
-    const token = request.header(HOLD_TOKEN_HEADER);
-
-    // Guards run before pipes, so the id hasn't been checked yet
-    if (typeof id !== 'string' || !isUUID(id)) {
-      throw new AppException(
-        'VALIDATION_FAILED',
-        'Validation failed (uuid is expected)',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    if (!token) {
-      throw new AppException(
-        'UNAUTHENTICATED',
-        'Send the hold token in the X-Hold-Token header',
-        HttpStatus.UNAUTHORIZED,
-      );
-    }
+    const id = checkId(request.params.id);
+    const token = requireOwnerProof(request);
 
     const booking = await this.prisma.booking.findUnique({
       where: { id },
-      select: { holdTokenHash: true },
+      select: { holdTokenHash: true, passengerId: true },
     });
-    if (
-      !booking?.holdTokenHash ||
-      !holdTokenMatches(token, booking.holdTokenHash)
-    ) {
+    if (!booking || !ownsBooking(booking, token, request.user)) {
       throw new AppException(
         'NOT_FOUND',
         'Hold not found',
@@ -58,4 +39,29 @@ export class HoldTokenGuard implements CanActivate {
     }
     return true;
   }
+}
+
+/** Guards run before pipes, so route ids are checked here. */
+export function checkId(id: unknown): string {
+  if (typeof id !== 'string' || !isUUID(id)) {
+    throw new AppException(
+      'VALIDATION_FAILED',
+      'Validation failed (uuid is expected)',
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+  return id;
+}
+
+/** The X-Hold-Token, required unless a passenger is signed in. */
+export function requireOwnerProof(request: Request): string | undefined {
+  const token = request.header(HOLD_TOKEN_HEADER);
+  if (!token && request.user?.typ !== 'passenger') {
+    throw new AppException(
+      'UNAUTHENTICATED',
+      'Send the hold token in the X-Hold-Token header, or sign in',
+      HttpStatus.UNAUTHORIZED,
+    );
+  }
+  return token;
 }

@@ -1,10 +1,12 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { holdTokenMatches } from '../bookings/hold-token.js';
+import { ownsBooking } from '../bookings/hold-token.js';
+import type { AuthUser } from '../common/auth/auth-user.js';
 import { AppException } from '../common/errors/app.exception.js';
+import { requireSecret } from '../common/secrets.js';
 import type { Prisma } from '../generated/prisma/client.js';
-import { BookingStatus } from '../generated/prisma/enums.js';
+import { BookingStatus, TripStatus } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { TripsService } from '../trips/trips.service.js';
+import { isStatusStale, TripsService } from '../trips/trips.service.js';
 import { renderTicketPdf } from './ticket-pdf.js';
 import {
   checkTicketLink,
@@ -34,6 +36,7 @@ const ticketSelect = {
   totalPesewas: true,
   qrNonce: true,
   holdTokenHash: true,
+  passengerId: true,
   boardedAt: true,
   trip: {
     select: {
@@ -62,6 +65,8 @@ export interface TicketAccess {
   t?: string;
   /** The hold token from POST /holds, right after paying. */
   holdToken?: string;
+  /** The signed-in caller; a passenger opens their own tickets. */
+  user?: AuthUser;
 }
 
 export type Ticket = Awaited<ReturnType<TicketsService['getTicket']>>;
@@ -133,10 +138,10 @@ export class TicketsService {
   }
 
   private async loadTicket(code: string, access: TicketAccess) {
-    if (!access.t && !access.holdToken) {
+    if (!access.t && !access.holdToken && access.user?.typ !== 'passenger') {
       throw new AppException(
         'UNAUTHENTICATED',
-        'Open the ticket from its link, or send the X-Hold-Token you paid with',
+        'Open the ticket from its link, send the X-Hold-Token you paid with, or sign in',
         HttpStatus.UNAUTHORIZED,
       );
     }
@@ -169,16 +174,132 @@ export class TicketsService {
       select: ticketSelect,
     });
     if (!TICKET_STATUSES.includes(booking.status)) throw ticketNotFound();
-    if (
-      !access.t &&
-      !(
-        booking.holdTokenHash &&
-        holdTokenMatches(access.holdToken!, booking.holdTokenHash)
-      )
-    ) {
+    if (!access.t && !ownsBooking(booking, access.holdToken, access.user)) {
       throw ticketNotFound();
     }
     return booking;
+  }
+
+  /**
+   * GET /me/tickets. Upcoming: confirmed tickets on trips that haven't left,
+   * soonest first. Past: boarded, no-show and confirmed tickets on departed
+   * trips, newest first. Cursor-paged by booking id.
+   */
+  async myTickets(passengerId: string, query: MyTicketsQuery) {
+    const upcoming = query.scope !== 'past';
+    const where: Prisma.BookingWhereInput = upcoming
+      ? {
+          passengerId,
+          status: BookingStatus.CONFIRMED,
+          trip: {
+            status: { notIn: [TripStatus.DEPARTED, TripStatus.CANCELLED] },
+          },
+        }
+      : {
+          passengerId,
+          OR: [
+            {
+              status: { in: [BookingStatus.BOARDED, BookingStatus.NO_SHOW] },
+            },
+            {
+              status: BookingStatus.CONFIRMED,
+              trip: { status: TripStatus.DEPARTED },
+            },
+          ],
+        };
+    const direction = upcoming ? 'asc' : 'desc';
+    const read = () =>
+      this.prisma.booking.findMany({
+        where,
+        select: myTicketSelect,
+        orderBy: [
+          { trip: { departureAt: { sort: direction, nulls: 'last' } } },
+          { trip: { loadingStartsAt: { sort: direction, nulls: 'last' } } },
+          { id: direction },
+        ],
+        take: query.limit + 1,
+        ...(query.cursor && { cursor: { id: query.cursor }, skip: 1 }),
+      });
+
+    let rows = await read();
+    // A trip that has left since the last look moves its ticket to Past
+    const stale = rows.filter((row) => isStatusStale(row.trip, new Date()));
+    if (stale.length) {
+      for (const row of stale) await this.trips.refreshStatus(row.tripId);
+      rows = await read();
+    }
+
+    const page = rows.slice(0, query.limit);
+    return {
+      items: page.map((row) => ({
+        code: row.code,
+        status: row.status,
+        badge: badgeFor(row.status, row.trip),
+        seatLabel: row.seatLabel,
+        operator: row.trip.operator,
+        route: {
+          origin: row.trip.route.originStation,
+          destination: row.trip.route.destinationStation,
+        },
+        bus: row.trip.bus,
+        bay: row.trip.bay,
+        mode: row.trip.mode,
+        departureAt: row.trip.departureAt,
+        loadingStartsAt: row.trip.loadingStartsAt,
+        leaveBy: row.trip.leaveBy,
+      })),
+      nextCursor: rows.length > query.limit ? page[page.length - 1].id : null,
+    };
+  }
+}
+
+export interface MyTicketsQuery {
+  scope: 'upcoming' | 'past';
+  limit: number;
+  cursor?: string;
+}
+
+const myTicketSelect = {
+  id: true,
+  code: true,
+  status: true,
+  tripId: true,
+  seatLabel: true,
+  trip: {
+    select: {
+      status: true,
+      mode: true,
+      departureAt: true,
+      loadingStartsAt: true,
+      leaveBy: true,
+      operator: { select: { name: true } },
+      bus: { select: { plate: true } },
+      bay: { select: { number: true } },
+      route: {
+        select: {
+          originStation: { select: { name: true, city: true } },
+          destinationStation: { select: { name: true, city: true } },
+        },
+      },
+    },
+  },
+} satisfies Prisma.BookingSelect;
+
+/** The badge each ticket shows on My tickets. */
+function badgeFor(
+  status: BookingStatus,
+  trip: { status: TripStatus; bay: { number: number } },
+): string {
+  if (status === BookingStatus.BOARDED) return 'Used';
+  if (status === BookingStatus.NO_SHOW) return 'Not used';
+  switch (trip.status) {
+    case TripStatus.LOADING:
+    case TripStatus.FULL:
+      return `Loading · bay ${trip.bay.number}`;
+    case TripStatus.DEPARTED:
+      return 'Not used';
+    default:
+      return 'Scheduled';
   }
 }
 
@@ -188,12 +309,4 @@ function ticketNotFound() {
     'Ticket not found',
     HttpStatus.NOT_FOUND,
   );
-}
-
-function requireSecret(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`Set ${name} in .env (any long random string)`);
-  }
-  return value;
 }

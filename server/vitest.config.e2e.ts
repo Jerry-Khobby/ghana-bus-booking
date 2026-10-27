@@ -18,6 +18,9 @@ export default defineConfig({
       MAIL_PROVIDER: 'log',
       WEB_URL: 'http://web.test',
       TICK_SECRET: 'test-tick-secret',
+      JWT_ACCESS_SECRET: 'test-jwt-secret',
+      REFRESH_TOKEN_PEPPER: 'test-refresh-pepper',
+      OTP_PEPPER: 'test-otp-pepper',
     },
     // One file at a time: each boots the whole app against the same database,
     // and running them all at once runs small machines out of memory

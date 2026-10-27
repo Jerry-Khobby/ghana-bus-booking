@@ -12,6 +12,7 @@ import {
   type RawBodyRequest,
 } from '@nestjs/common';
 import { ApiExcludeEndpoint, ApiHeader, ApiTags } from '@nestjs/swagger';
+import { Public } from '../common/auth/public.decorator.js';
 import type { Request } from 'express';
 import { HoldTokenGuard } from '../bookings/hold-token.guard.js';
 import { AppException } from '../common/errors/app.exception.js';
@@ -28,6 +29,7 @@ const holdTokenHeader = {
 // The hold owner pays and watches the payment with their X-Hold-Token.
 // Routes span several prefixes, so each handler sets its full path.
 @ApiTags('Payments')
+@Public()
 @Controller()
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module.js';
 import { generateTicketCode } from './../src/bookings/ticket-code.js';
@@ -16,6 +17,7 @@ export async function createTestApp() {
     rawBody: true,
   });
   app.setGlobalPrefix('api/v1');
+  app.use(cookieParser());
   await app.init();
   return { app, prisma: app.get(PrismaService) };
 }

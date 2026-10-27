@@ -73,9 +73,14 @@ export class BookingsService {
    * POST /holds: takes one seat for holdMinutes. The database decides who wins
    * a race: one conditional update on the seat row, inside a transaction.
    * `previousToken` is the caller's hold token, if they have one, so taking a
-   * new seat on the same trip releases their old one.
+   * new seat on the same trip releases their old one; a signed-in passenger's
+   * old hold on the trip is released the same way.
    */
-  async createHold(dto: CreateHoldDto, previousToken?: string) {
+  async createHold(
+    dto: CreateHoldDto,
+    previousToken?: string,
+    passengerId?: string,
+  ) {
     const now = new Date();
     await this.trips.refreshStatus(dto.tripId, now);
 
@@ -133,6 +138,9 @@ export class BookingsService {
       await this.expireStaleHolds(tx, trip.id, now);
 
       // One hold per person per trip: let go of the old seat first
+      if (passengerId) {
+        await this.cancelHeld(tx, { tripId: trip.id, passengerId }, now);
+      }
       if (previousToken) {
         await this.cancelHeld(
           tx,
@@ -187,6 +195,7 @@ export class BookingsService {
           totalPesewas: farePesewas + feePesewas,
           holdExpiresAt: expiresAt,
           holdTokenHash: hash,
+          passengerId,
           qrNonce: randomBytes(16).toString('base64url'),
         },
         select: { id: true },

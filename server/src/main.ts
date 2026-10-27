@@ -1,6 +1,7 @@
 // Loads .env for local runs; in Docker the variables come from compose.
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule, ObserveInstrument } from './app.module.js';
 
@@ -14,6 +15,8 @@ async function bootstrap() {
   // The validation pipe and error filter are registered in AppModule, so
   // e2e tests get them too.
   app.setGlobalPrefix('api/v1');
+  // The refresh token arrives in a cookie
+  app.use(cookieParser());
 
   // API docs at /api/docs; the frontend reads the contract from here.
   const config = new DocumentBuilder()

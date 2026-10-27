@@ -10,7 +10,10 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Public } from '../common/auth/public.decorator.js';
 import { ApiHeader, ApiTags } from '@nestjs/swagger';
+import type { AuthUser } from '../common/auth/auth-user.js';
+import { CurrentUser } from '../common/auth/current-user.decorator.js';
 import { BookingsService } from './bookings.service.js';
 import { CreateHoldDto } from './dto/create-hold.dto.js';
 import { HOLD_TOKEN_HEADER, HoldTokenGuard } from './hold-token.guard.js';
@@ -18,6 +21,7 @@ import { HOLD_TOKEN_HEADER, HoldTokenGuard } from './hold-token.guard.js';
 // Guests and passengers alike. Whoever takes a seat gets a holdToken and
 // sends it back as X-Hold-Token to read or release the hold.
 @ApiTags('Holds')
+@Public()
 @Controller('holds')
 export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) {}
@@ -32,8 +36,13 @@ export class BookingsController {
   createHold(
     @Body() dto: CreateHoldDto,
     @Headers(HOLD_TOKEN_HEADER) previousToken?: string,
+    @CurrentUser() user?: AuthUser,
   ) {
-    return this.bookingsService.createHold(dto, previousToken);
+    return this.bookingsService.createHold(
+      dto,
+      previousToken,
+      user?.typ === 'passenger' ? user.sub : undefined,
+    );
   }
 
   /** Pay screen: summary and the "seat held for 03:42" timer. */

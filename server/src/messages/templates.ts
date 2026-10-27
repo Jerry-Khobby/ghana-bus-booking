@@ -37,7 +37,7 @@ export interface LateRefundData {
 }
 
 /** Template names stored on OutboundMessage.template. */
-export type TemplateName = 'ticket' | 'late-refund';
+export type TemplateName = 'otp' | 'ticket' | 'late-refund';
 
 /** Everything user-supplied goes through this before it reaches the HTML. */
 export function escapeHtml(value: string): string {
@@ -100,6 +100,27 @@ export function ticketEmail(data: TicketEmailData): RenderedEmail {
     subject: `Your Seatline ticket ${data.code} · ${route}, seat ${data.seatLabel}`,
     html,
     text,
+  };
+}
+
+/**
+ * The sign-in code. It's in the subject so it shows in the phone's
+ * notification without opening the email.
+ */
+export function otpEmail(code: string, minutesValid: number): RenderedEmail {
+  return {
+    subject: `Your Seatline code: ${code}`,
+    html: layout(`
+<h1 style="margin:0 0 16px;font-size:20px">Your sign-in code</h1>
+<p style="margin:0 0 16px;font-size:32px;font-weight:bold;letter-spacing:6px">${escapeHtml(code)}</p>
+<p style="margin:0 0 12px">Enter it in Seatline to sign in. It works for ${minutesValid} minutes.</p>
+<p style="margin:0;font-size:13px;color:#5c6470">If you didn't ask for this, ignore this email. Nobody can sign in without the code.</p>`),
+    text: [
+      `Your Seatline sign-in code is ${code}.`,
+      `It works for ${minutesValid} minutes.`,
+      '',
+      "If you didn't ask for this, ignore this email.",
+    ].join('\n'),
   };
 }
 

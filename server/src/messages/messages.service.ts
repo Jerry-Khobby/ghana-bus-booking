@@ -7,6 +7,7 @@ import { TicketsService } from '../tickets/tickets.service.js';
 import { MAILER, type EmailMessage, type Mailer } from './mailer.js';
 import {
   lateRefundEmail,
+  otpEmail,
   ticketEmail,
   type RenderedEmail,
   type TemplateName,
@@ -63,6 +64,11 @@ export class MessagesService {
     private readonly tickets: TicketsService,
     @Inject(MAILER) private readonly mailer: Mailer,
   ) {}
+
+  /** Queues a sign-in code email. */
+  queueOtp(db: Db, email: string, code: string, minutesValid: number) {
+    return this.queue(db, email, 'otp', otpEmail(code, minutesValid));
+  }
 
   /** Queues the ticket email for a confirmed booking. Null if it has no email. */
   async queueTicket(db: Db, bookingId: string): Promise<string | null> {
@@ -156,7 +162,7 @@ export class MessagesService {
     to: string,
     template: TemplateName,
     email: RenderedEmail,
-    bookingId: string,
+    bookingId?: string,
   ): Promise<string> {
     const message = await db.outboundMessage.create({
       data: {
@@ -193,6 +199,7 @@ export class MessagesService {
           status: MessageStatus.SENT,
           attempts: { increment: 1 },
           lastError: null,
+          ...redacted(message.template),
         },
       });
     } catch (error) {
@@ -210,6 +217,7 @@ export class MessagesService {
               : MessageStatus.QUEUED,
           attempts,
           lastError: reason.slice(0, 500),
+          ...(attempts >= MAX_ATTEMPTS ? redacted(message.template) : {}),
         },
       });
     }
@@ -232,6 +240,16 @@ export class MessagesService {
     });
     return [{ filename: `${booking.code}.png`, content: png, cid: 'qr' }];
   }
+}
+
+/**
+ * Sign-in codes must not sit in the database: once an OTP email has left (or
+ * been given up on), its stored body is wiped.
+ */
+function redacted(template: string) {
+  return template === 'otp'
+    ? { body: '[sign-in code removed after sending]' }
+    : {};
 }
 
 /** A readable plain-text version of our own simple email HTML. */

@@ -6,11 +6,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiHeader, ApiTags } from '@nestjs/swagger';
+import { Public } from '../common/auth/public.decorator.js';
 import { TickSecretGuard } from './tick-secret.guard.js';
 import { TickService } from './tick.service.js';
 
 // Called by the GitHub Actions schedule (.github/workflows/tick.yml)
 @ApiTags('System')
+@Public()
 @Controller('internal')
 export class TickController {
   constructor(private readonly tickService: TickService) {}

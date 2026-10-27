@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Query,
 } from '@nestjs/common';
+import { Public } from '../common/auth/public.decorator.js';
 import { ApiHeader, ApiTags } from '@nestjs/swagger';
 import { HOLD_TOKEN_HEADER } from '../bookings/hold-token.guard.js';
 import { CatalogService } from './catalog.service.js';
@@ -16,6 +17,7 @@ import { StationsQueryDto } from './dto/stations-query.dto.js';
 // Public: no sign-in needed to browse. Routes span several prefixes, so each
 // handler sets its full path.
 @ApiTags('Catalog')
+@Public()
 @Controller()
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}

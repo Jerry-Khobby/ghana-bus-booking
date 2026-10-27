@@ -4,17 +4,15 @@ import {
   HttpStatus,
   Injectable,
 } from '@nestjs/common';
-import { isUUID } from 'class-validator';
 import type { Request } from 'express';
-import { HOLD_TOKEN_HEADER } from '../bookings/hold-token.guard.js';
-import { holdTokenMatches } from '../bookings/hold-token.js';
+import { checkId, requireOwnerProof } from '../bookings/hold-token.guard.js';
+import { ownsBooking } from '../bookings/hold-token.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 /**
- * `/payments/:id` belongs to whoever holds the booking: the same X-Hold-Token
- * that took the seat. A wrong token looks like a missing payment.
- * TODO(phase 4): also accept the signed-in passenger who owns the booking.
+ * `/payments/:id` belongs to whoever owns the booking: the same X-Hold-Token
+ * that took the seat, or the signed-in passenger. Anyone else sees NOT_FOUND.
  */
 @Injectable()
 export class PaymentOwnerGuard implements CanActivate {
@@ -22,30 +20,16 @@ export class PaymentOwnerGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
-    const id = request.params.id;
-    const token = request.header(HOLD_TOKEN_HEADER);
-
-    if (typeof id !== 'string' || !isUUID(id)) {
-      throw new AppException(
-        'VALIDATION_FAILED',
-        'Validation failed (uuid is expected)',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    if (!token) {
-      throw new AppException(
-        'UNAUTHENTICATED',
-        'Send the hold token in the X-Hold-Token header',
-        HttpStatus.UNAUTHORIZED,
-      );
-    }
+    const id = checkId(request.params.id);
+    const token = requireOwnerProof(request);
 
     const payment = await this.prisma.payment.findUnique({
       where: { id },
-      select: { booking: { select: { holdTokenHash: true } } },
+      select: {
+        booking: { select: { holdTokenHash: true, passengerId: true } },
+      },
     });
-    const hash = payment?.booking.holdTokenHash;
-    if (!hash || !holdTokenMatches(token, hash)) {
+    if (!payment || !ownsBooking(payment.booking, token, request.user)) {
       throw new AppException(
         'NOT_FOUND',
         'Payment not found',
