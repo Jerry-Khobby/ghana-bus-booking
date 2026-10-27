@@ -15,6 +15,8 @@ export default defineConfig({
       FAKE_PAYMENT_DELAY_MS: '0',
       QR_SIGNING_SECRET: 'test-qr-secret',
       TICKET_LINK_SECRET: 'test-ticket-link-secret',
+      MAIL_PROVIDER: 'log',
+      WEB_URL: 'http://web.test',
     },
     // One file at a time: each boots the whole app against the same database,
     // and running them all at once runs small machines out of memory

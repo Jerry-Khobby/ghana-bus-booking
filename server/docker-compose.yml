@@ -33,6 +33,11 @@ services:
       PAYSTACK_CALLBACK_URL: ${PAYSTACK_CALLBACK_URL:-}
       QR_SIGNING_SECRET: ${QR_SIGNING_SECRET}
       TICKET_LINK_SECRET: ${TICKET_LINK_SECRET}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-log}
+      GMAIL_USER: ${GMAIL_USER:-}
+      GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      WEB_URL: ${WEB_URL:-http://localhost:5173}
     ports:
       - "3000:3000"
     depends_on:

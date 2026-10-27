@@ -1,43 +1,10 @@
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
+import { cedis, departureLine, place } from '../common/format.js';
 import type { Ticket } from './tickets.service.js';
 
 const INK = '#1f2328';
 const MUTED = '#5c6470';
-
-// Ghana is UTC+0, but format in its own zone in case the service expands
-const time = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'Africa/Accra',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-const day = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'Africa/Accra',
-  weekday: 'short',
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-});
-
-const cedis = (pesewas: number) => `GH¢ ${(pesewas / 100).toFixed(2)}`;
-const place = (station: { name: string; city: string }) =>
-  station.name === 'Main station'
-    ? station.city
-    : `${station.city} (${station.name})`;
-
-/** When the bus leaves, in the words the ticket screen uses. */
-function departureLine(ticket: Ticket): string {
-  if (ticket.mode === 'FIXED_TIME' && ticket.departureAt) {
-    return `${day.format(ticket.departureAt)} at ${time.format(ticket.departureAt)}`;
-  }
-  const from = ticket.loadingStartsAt ?? ticket.leaveBy;
-  const by = ticket.leaveBy
-    ? `, by ${time.format(ticket.leaveBy)} at the latest`
-    : '';
-  return from
-    ? `${day.format(from)}, leaves when full${by}`
-    : 'Leaves when full';
-}
 
 /** A one-page A5 ticket with the boarding QR. */
 export async function renderTicketPdf(ticket: Ticket): Promise<Buffer> {
