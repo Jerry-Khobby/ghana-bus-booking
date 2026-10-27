@@ -17,6 +17,7 @@ export default defineConfig({
       TICKET_LINK_SECRET: 'test-ticket-link-secret',
       MAIL_PROVIDER: 'log',
       WEB_URL: 'http://web.test',
+      TICK_SECRET: 'test-tick-secret',
     },
     // One file at a time: each boots the whole app against the same database,
     // and running them all at once runs small machines out of memory

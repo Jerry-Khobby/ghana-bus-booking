@@ -1,0 +1,27 @@
+name: Tick
+
+# The API's safety net: frees expired holds, checks pending payments, moves
+# trips along, retries emails and requests refunds. Nothing depends on it
+# running on time, so GitHub starting a run late is fine.
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Skipped until the API is deployed: set the API_URL repository variable
+    # (e.g. https://seatline-api.onrender.com) and the TICK_SECRET secret
+    if: vars.API_URL != ''
+    steps:
+      - name: POST /internal/tick
+        env:
+          API_URL: ${{ vars.API_URL }}
+          TICK_SECRET: ${{ secrets.TICK_SECRET }}
+        # 120 seconds covers Render waking from sleep
+        run: >-
+          curl --fail-with-body --silent --show-error --max-time 120
+          -X POST -H "X-Tick-Secret: $TICK_SECRET"
+          "$API_URL/api/v1/internal/tick"

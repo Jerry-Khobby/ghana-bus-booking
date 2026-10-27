@@ -38,6 +38,7 @@ services:
       GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-}
       WEB_URL: ${WEB_URL:-http://localhost:5173}
+      TICK_SECRET: ${TICK_SECRET:-}
     ports:
       - "3000:3000"
     depends_on:
