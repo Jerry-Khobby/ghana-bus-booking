@@ -12,10 +12,10 @@ import {
 import type { Prisma } from '../generated/prisma/client.js';
 import {
   BookingStatus,
+  MomoNetwork,
   PaymentMethod,
   PaymentStatus,
   SeatStatus,
-  TripStatus,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { MessagesService } from '../messages/messages.service.js';
@@ -44,6 +44,10 @@ const VERIFY_BUTTON_EVERY_MS = 5_000;
 const SWEEP_AFTER_MS = 2 * 60_000;
 /** Still pending this long after it started: the payer gave up. */
 const ABANDON_AFTER_MS = 10 * 60_000;
+
+/** Sent to Paystack for walk-ins who gave no email. */
+const WALK_IN_PAYER_EMAIL =
+  process.env.WALK_IN_PAYER_EMAIL ?? 'walk-in@seatline.example';
 
 const OPEN_PAYMENTS = [PaymentStatus.INITIATED, PaymentStatus.PENDING];
 const TX_OPTIONS = { maxWait: 10_000, timeout: 10_000 };
@@ -175,6 +179,65 @@ export class PaymentsService {
       );
     }
     return response;
+  }
+
+  /**
+   * A walk-in sold by mobile money at the bay. The booking already holds the
+   * seat; this charges the passenger's number exactly as an online payment
+   * would, and the console polls GET /agent/payments/:id for the result.
+   */
+  async payWalkIn(
+    bookingId: string,
+    momo: { phone: string; network: MomoNetwork },
+    agentId: string,
+    email: string | undefined,
+  ) {
+    const now = new Date();
+    const payment = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.booking.updateMany({
+        where: {
+          id: bookingId,
+          status: BookingStatus.HELD,
+          holdExpiresAt: { gt: now },
+        },
+        data: { status: BookingStatus.PENDING_PAYMENT },
+      });
+      if (!count) throw await this.notPayable(tx, bookingId);
+      const { totalPesewas } = await tx.booking.findUniqueOrThrow({
+        where: { id: bookingId },
+        select: { totalPesewas: true },
+      });
+      return tx.payment.create({
+        data: {
+          bookingId,
+          method: PaymentMethod.MOMO,
+          network: momo.network,
+          payerPhone: momo.phone,
+          amountPesewas: totalPesewas,
+          provider: this.provider.name,
+          providerRef: `pay_${randomBytes(12).toString('hex')}`,
+          status: PaymentStatus.INITIATED,
+          initiatedById: agentId,
+        },
+        select: { id: true, providerRef: true, amountPesewas: true },
+      });
+    }, TX_OPTIONS);
+
+    // Paystack needs an email; walk-ins often have none
+    await this.startCharge(
+      payment,
+      {
+        method: 'MOMO',
+        contactEmail: email ?? WALK_IN_PAYER_EMAIL,
+      } as PayHoldDto,
+      momo,
+    );
+    return this.describe(payment.id);
+  }
+
+  /** Normalises a MoMo number and checks it belongs to the network. */
+  checkMomo(phone: string, network: MomoNetwork) {
+    return this.checkMomoNumber({ phone, network } as PayHoldDto);
   }
 
   /**
@@ -514,28 +577,7 @@ export class PaymentsService {
       return this.messages.queueLateRefund(tx, booking.id);
     }
 
-    await tx.booking.update({
-      where: { id: booking.id },
-      data: {
-        status: BookingStatus.CONFIRMED,
-        confirmedAt: now,
-        holdExpiresAt: null,
-      },
-    });
-    const trip = await tx.trip.update({
-      where: { id: booking.tripId },
-      data: { seatsSold: { increment: 1 } },
-      select: { seatsSold: true, seatsTotal: true },
-    });
-    if (trip.seatsSold >= trip.seatsTotal) {
-      await tx.trip.updateMany({
-        where: {
-          id: booking.tripId,
-          status: { in: [TripStatus.SCHEDULED, TripStatus.LOADING] },
-        },
-        data: { status: TripStatus.FULL },
-      });
-    }
+    await this.bookings.recordSale(tx, booking, now);
     return this.messages.queueTicket(tx, booking.id);
   }
 

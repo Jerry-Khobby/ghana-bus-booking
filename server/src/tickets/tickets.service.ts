@@ -12,6 +12,7 @@ import {
   checkTicketLink,
   signQrPayload,
   signTicketLink,
+  verifyQrPayload,
 } from './ticket-signing.js';
 
 /** Only these bookings are tickets; anything else is NOT_FOUND. */
@@ -101,6 +102,14 @@ export class TicketsService {
 
   qrPayload(booking: { code: string; tripId: string; qrNonce: string }) {
     return signQrPayload(this.qrSecret, booking);
+  }
+
+  /** True if a scanned QR was issued for this booking and not rotated. */
+  verifyQr(
+    payload: string,
+    booking: { code: string; tripId: string; qrNonce: string },
+  ) {
+    return verifyQrPayload(this.qrSecret, payload, booking);
   }
 
   /** GET /tickets/:code: everything the "Your ticket" screen shows. */

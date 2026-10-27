@@ -339,6 +339,41 @@ export class BookingsService {
     // TODO(phase 8): publish a seat event (AVAILABLE)
   }
 
+  /**
+   * A sold seat: the booking is CONFIRMED and the trip's sold count goes up;
+   * the last seat makes the trip FULL. The caller has already marked the seat
+   * SOLD. Online payments and walk-in sales both end here.
+   */
+  async recordSale(
+    tx: Prisma.TransactionClient,
+    booking: { id: string; tripId: string },
+    now: Date,
+  ) {
+    await tx.booking.update({
+      where: { id: booking.id },
+      data: {
+        status: BookingStatus.CONFIRMED,
+        confirmedAt: now,
+        holdExpiresAt: null,
+      },
+    });
+    const trip = await tx.trip.update({
+      where: { id: booking.tripId },
+      data: { seatsSold: { increment: 1 } },
+      select: { seatsSold: true, seatsTotal: true },
+    });
+    if (trip.seatsSold >= trip.seatsTotal) {
+      await tx.trip.updateMany({
+        where: {
+          id: booking.tripId,
+          status: { in: [TripStatus.SCHEDULED, TripStatus.LOADING] },
+        },
+        data: { status: TripStatus.FULL },
+      });
+    }
+    // TODO(phase 8): publish a console event so the agent sees "Full"
+  }
+
   /** Cancels a HELD booking and frees its seat. False if none matched. */
   private async cancelHeld(
     tx: Prisma.TransactionClient,
