@@ -16,6 +16,7 @@ import {
   PaymentMethod,
   PaymentStatus,
   SeatStatus,
+  TripStatus,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { MessagesService } from '../messages/messages.service.js';
@@ -58,6 +59,7 @@ const bookingForResult = {
   tripId: true,
   tripSeatId: true,
   holdExpiresAt: true,
+  trip: { select: { status: true } },
 } satisfies Prisma.BookingSelect;
 type BookingForResult = Prisma.BookingGetPayload<{
   select: typeof bookingForResult;
@@ -533,6 +535,15 @@ export class PaymentsService {
     booking: BookingForResult,
     now: Date,
   ): Promise<string | null> {
+    // Paid for a trip that was cancelled meanwhile: send the money back
+    if (booking.trip.status === TripStatus.CANCELLED) {
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: { status: BookingStatus.REFUND_PENDING },
+      });
+      return this.messages.queueTripCancelled(tx, booking.id, 'online');
+    }
+
     // Normal case: the seat is still this booking's
     let { count } = await tx.tripSeat.updateMany({
       where: { id: booking.tripSeatId, bookingId: booking.id },

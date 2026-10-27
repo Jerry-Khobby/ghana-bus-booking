@@ -37,7 +37,8 @@ export interface LateRefundData {
 }
 
 /** Template names stored on OutboundMessage.template. */
-export type TemplateName = 'otp' | 'ticket' | 'late-refund';
+export type TemplateName =
+  'otp' | 'ticket' | 'late-refund' | 'trip-changed' | 'trip-cancelled';
 
 /** Everything user-supplied goes through this before it reaches the HTML. */
 export function escapeHtml(value: string): string {
@@ -121,6 +122,71 @@ export function otpEmail(code: string, minutesValid: number): RenderedEmail {
       '',
       "If you didn't ask for this, ignore this email.",
     ].join('\n'),
+  };
+}
+
+export interface TripChangedData {
+  code: string;
+  passengerName: string | null;
+  origin: Station;
+  destination: Station;
+  /** The new departure, in the ticket's words. */
+  newDeparture: string;
+  seatLabel: string;
+  bayNumber: number;
+  ticketUrl: string;
+}
+
+/** Sent to confirmed passengers when an admin moves the departure. */
+export function tripChangedEmail(data: TripChangedData): RenderedEmail {
+  const route = `${data.origin.city} → ${data.destination.city}`;
+  const line = `Your ${route} bus now leaves ${data.newDeparture}.`;
+  return {
+    subject: `Your ${route} bus now leaves ${data.newDeparture}`,
+    html: layout(`
+<h1 style="margin:0 0 16px;font-size:20px">Your bus time has changed</h1>
+<p style="margin:0 0 12px">${escapeHtml(greeting(data.passengerName))} ${escapeHtml(line)}</p>
+<p style="margin:0 0 12px">Your ticket ${escapeHtml(data.code)} still works: seat ${escapeHtml(data.seatLabel)}, bay ${data.bayNumber}.</p>
+<p style="margin:16px 0 0"><a href="${escapeHtml(data.ticketUrl)}" style="display:inline-block;background:#1f6f4a;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold">Open your ticket</a></p>`),
+    text: [
+      greeting(data.passengerName),
+      '',
+      line,
+      `Your ticket ${data.code} still works: seat ${data.seatLabel}, bay ${data.bayNumber}.`,
+      `Open your ticket: ${data.ticketUrl}`,
+    ].join('\n'),
+  };
+}
+
+export interface TripCancelledData {
+  code: string;
+  passengerName: string | null;
+  origin: Station;
+  destination: Station;
+  totalPesewas: number;
+  /** online: refunded to the account; cash: collect it at the station. */
+  refund: 'online' | 'cash';
+}
+
+/** Sent to every affected passenger when an admin cancels the trip. */
+export function tripCancelledEmail(data: TripCancelledData): RenderedEmail {
+  const route = `${data.origin.city} → ${data.destination.city}`;
+  const amount = cedis(data.totalPesewas);
+  const refund =
+    data.refund === 'online'
+      ? `We're refunding ${amount} to the account you paid from; it usually arrives within a few working days.`
+      : `Bring this email or your ticket ${data.code} to the station to collect your ${amount}.`;
+  const line = `Your ${route} trip (ticket ${data.code}) has been cancelled. We're sorry.`;
+  return {
+    subject:
+      data.refund === 'online'
+        ? `Your ${route} trip is cancelled; your refund is on its way`
+        : `Your ${route} trip is cancelled`,
+    html: layout(`
+<h1 style="margin:0 0 16px;font-size:20px">Your trip is cancelled</h1>
+<p style="margin:0 0 12px">${escapeHtml(greeting(data.passengerName))} ${escapeHtml(line)}</p>
+<p style="margin:0">${escapeHtml(refund)}</p>`),
+    text: [greeting(data.passengerName), '', line, refund].join('\n'),
   };
 }
 

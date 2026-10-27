@@ -4,11 +4,14 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { MessageChannel, MessageStatus } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TicketsService } from '../tickets/tickets.service.js';
+import { departureLine } from '../common/format.js';
 import { MAILER, type EmailMessage, type Mailer } from './mailer.js';
 import {
   lateRefundEmail,
   otpEmail,
   ticketEmail,
+  tripCancelledEmail,
+  tripChangedEmail,
   type RenderedEmail,
   type TemplateName,
 } from './templates.js';
@@ -96,6 +99,61 @@ export class MessagesService {
       ticketUrl: this.ticketUrl(booking.code, trip),
     });
     return this.queue(db, booking.contactEmail, 'ticket', email, booking.id);
+  }
+
+  /** Queues "your bus now leaves at …" for a confirmed passenger. */
+  async queueTripChanged(db: Db, bookingId: string): Promise<string | null> {
+    const booking = await db.booking.findUniqueOrThrow({
+      where: { id: bookingId },
+      select: bookingForEmail,
+    });
+    if (!booking.contactEmail) return null;
+    const { trip } = booking;
+    const email = tripChangedEmail({
+      code: booking.code,
+      passengerName: booking.passengerName,
+      origin: trip.route.originStation,
+      destination: trip.route.destinationStation,
+      newDeparture: departureLine(trip),
+      seatLabel: booking.seatLabel,
+      bayNumber: trip.bay.number,
+      ticketUrl: this.ticketUrl(booking.code, trip),
+    });
+    return this.queue(
+      db,
+      booking.contactEmail,
+      'trip-changed',
+      email,
+      booking.id,
+    );
+  }
+
+  /** Queues the cancellation notice, with how the money comes back. */
+  async queueTripCancelled(
+    db: Db,
+    bookingId: string,
+    refund: 'online' | 'cash',
+  ): Promise<string | null> {
+    const booking = await db.booking.findUniqueOrThrow({
+      where: { id: bookingId },
+      select: bookingForEmail,
+    });
+    if (!booking.contactEmail) return null;
+    const email = tripCancelledEmail({
+      code: booking.code,
+      passengerName: booking.passengerName,
+      origin: booking.trip.route.originStation,
+      destination: booking.trip.route.destinationStation,
+      totalPesewas: booking.totalPesewas,
+      refund,
+    });
+    return this.queue(
+      db,
+      booking.contactEmail,
+      'trip-cancelled',
+      email,
+      booking.id,
+    );
   }
 
   /** Queues the apology for a payment that arrived after the seat was sold. */
