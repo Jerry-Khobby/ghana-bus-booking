@@ -181,6 +181,9 @@ export async function createFixture(prisma: PrismaService) {
       data: { bookingId: null },
     });
     await prisma.payment.deleteMany({ where: { booking: { operatorId } } });
+    await prisma.outboundMessage.deleteMany({
+      where: { booking: { operatorId } },
+    });
     await prisma.booking.deleteMany({ where: { operatorId } });
     await prisma.trip.deleteMany({ where: { operatorId } }); // seats cascade
     await prisma.route.deleteMany({ where: { operatorId } });

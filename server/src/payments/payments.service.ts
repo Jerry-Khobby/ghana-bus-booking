@@ -18,6 +18,7 @@ import {
   TripStatus,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { MessagesService } from '../messages/messages.service.js';
 import { TicketsService } from '../tickets/tickets.service.js';
 import { availableSeatWhere } from '../trips/trip-seats.js';
 import { PayHoldDto } from './dto/pay-hold.dto.js';
@@ -70,6 +71,7 @@ export class PaymentsService {
     private readonly bookings: BookingsService,
     private readonly idempotency: IdempotencyService,
     private readonly tickets: TicketsService,
+    private readonly messages: MessagesService,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
   ) {}
 
@@ -298,6 +300,8 @@ export class PaymentsService {
    */
   async applyResult(providerRef: string, result: ChargeResult) {
     const now = new Date();
+    // Emails queued in the transaction, sent once it has committed
+    const outbox: (string | null)[] = [];
     await this.prisma.$transaction(async (tx) => {
       const [locked] = await tx.$queryRaw<{ id: string }[]>`
         SELECT id FROM "Payment" WHERE "providerRef" = ${providerRef} FOR UPDATE`;
@@ -354,7 +358,7 @@ export class PaymentsService {
             providerPayload: raw,
           },
         });
-        await this.confirmBooking(tx, payment.booking, now);
+        outbox.push(await this.confirmBooking(tx, payment.booking, now));
         return;
       }
 
@@ -376,11 +380,19 @@ export class PaymentsService {
       });
       await this.reopenHold(tx, payment.booking, now);
     }, TX_OPTIONS);
+    await this.messages.send(outbox);
     // TODO(phase 8): publish payment and seat events
   }
 
-  /** Paid: sell the seat. Handles the late payment that arrives after expiry. */
-  private async confirmBooking(tx: Tx, booking: BookingForResult, now: Date) {
+  /**
+   * Paid: sell the seat. Handles the late payment that arrives after expiry.
+   * Returns the id of the email it queued (ticket, or the refund apology).
+   */
+  private async confirmBooking(
+    tx: Tx,
+    booking: BookingForResult,
+    now: Date,
+  ): Promise<string | null> {
     // Normal case: the seat is still this booking's
     let { count } = await tx.tripSeat.updateMany({
       where: { id: booking.tripSeatId, bookingId: booking.id },
@@ -421,8 +433,8 @@ export class PaymentsService {
         where: { id: booking.id },
         data: { status: BookingStatus.REFUND_PENDING },
       });
-      // TODO(phase 3, outbox): queue the refund and an apology email
-      return;
+      // TODO(phase 8): ask Paystack for the refund (POST /refund)
+      return this.messages.queueLateRefund(tx, booking.id);
     }
 
     await tx.booking.update({
@@ -447,7 +459,7 @@ export class PaymentsService {
         data: { status: TripStatus.FULL },
       });
     }
-    // TODO(phase 3, outbox): queue the ticket email
+    return this.messages.queueTicket(tx, booking.id);
   }
 
   /** Not paid: back to HELD if time remains, so the passenger can retry. */
