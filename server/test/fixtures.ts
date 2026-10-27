@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module.js';
+import { generateTicketCode } from './../src/bookings/ticket-code.js';
 import type { Prisma } from './../src/generated/prisma/client.js';
 import { PrismaService } from './../src/prisma/prisma.service.js';
 import type { LayoutCell } from './../src/trips/trip-seats.js';
@@ -146,7 +147,8 @@ export async function createFixture(prisma: PrismaService) {
     });
     const booking = await prisma.booking.create({
       data: {
-        code: `SL-${randomUUID().slice(0, 4).toUpperCase()}-${randomUUID().slice(0, 2).toUpperCase()}`,
+        // A real code: the ticket endpoints reject anything that isn't one
+        code: generateTicketCode(),
         operatorId: operator.id,
         tripId,
         tripSeatId: seat.id,
