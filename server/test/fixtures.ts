@@ -1,3 +1,4 @@
+import { hash } from '@node-rs/argon2';
 import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -175,6 +176,32 @@ export async function createFixture(prisma: PrismaService) {
     return booking;
   }
 
+  /** A staff member of this operator; with a password they are ACTIVE. */
+  async function createStaff(options: {
+    role?: 'AGENT' | 'OPERATOR_ADMIN';
+    password?: string;
+    bayNumbers?: number[];
+    name?: string;
+  }) {
+    const role = options.role ?? 'AGENT';
+    return prisma.staffUser.create({
+      data: {
+        operatorId: operator.id,
+        role,
+        email: `${role.toLowerCase()}-${randomUUID().slice(0, 8)}@${suffix}.test`,
+        name: options.name ?? (role === 'AGENT' ? 'Test Agent' : 'Test Admin'),
+        passwordHash: options.password ? await hash(options.password) : null,
+        status: options.password ? 'ACTIVE' : 'INVITED',
+        stationId: origin.id,
+        bays: {
+          create: (options.bayNumbers ?? []).map((n) => ({
+            bayId: bays[n - 1].id,
+          })),
+        },
+      },
+    });
+  }
+
   async function cleanup() {
     const operatorId = operator.id;
     const trips = { trip: { operatorId } };
@@ -182,6 +209,10 @@ export async function createFixture(prisma: PrismaService) {
       where: trips,
       data: { bookingId: null },
     });
+    // Rows pointing at bookings and trips go first
+    await prisma.scanLog.deleteMany({ where: trips });
+    await prisma.cashEntry.deleteMany({ where: { operatorId } });
+    await prisma.auditLog.deleteMany({ where: { operatorId } });
     await prisma.payment.deleteMany({ where: { booking: { operatorId } } });
     await prisma.outboundMessage.deleteMany({
       where: { booking: { operatorId } },
@@ -192,6 +223,18 @@ export async function createFixture(prisma: PrismaService) {
     await prisma.bay.deleteMany({ where: { operatorId } });
     await prisma.bus.deleteMany({ where: { operatorId } });
     await prisma.seatLayout.deleteMany({ where: { operatorId } });
+    const staffIds = (
+      await prisma.staffUser.findMany({
+        where: { operatorId },
+        select: { id: true },
+      })
+    ).map((u) => u.id);
+    await prisma.refreshToken.deleteMany({
+      where: { subjectId: { in: staffIds } },
+    });
+    await prisma.staffToken.deleteMany({
+      where: { staffUserId: { in: staffIds } },
+    });
     await prisma.staffUser.deleteMany({ where: { operatorId } });
     await prisma.operator.delete({ where: { id: operatorId } });
     await prisma.station.deleteMany({
@@ -211,6 +254,7 @@ export async function createFixture(prisma: PrismaService) {
     createTrip,
     setSeat,
     createBooking,
+    createStaff,
     cleanup,
   };
 }
