@@ -91,7 +91,7 @@ describe('Passenger accounts (e2e)', () => {
       expect(message).toMatchObject({
         status: 'SENT',
         subject: `Your Seatline code: ${codes.get(email)}`,
-        body: '[sign-in code removed after sending]',
+        body: '[removed after sending: it contained a secret]',
       });
       // Only a hash of the code is stored
       const otp = await prisma.otpCode.findFirstOrThrow({ where: { email } });

@@ -38,7 +38,13 @@ export interface LateRefundData {
 
 /** Template names stored on OutboundMessage.template. */
 export type TemplateName =
-  'otp' | 'ticket' | 'late-refund' | 'trip-changed' | 'trip-cancelled';
+  | 'otp'
+  | 'ticket'
+  | 'late-refund'
+  | 'trip-changed'
+  | 'trip-cancelled'
+  | 'staff-invite'
+  | 'staff-reset';
 
 /** Everything user-supplied goes through this before it reaches the HTML. */
 export function escapeHtml(value: string): string {
@@ -187,6 +193,53 @@ export function tripCancelledEmail(data: TripCancelledData): RenderedEmail {
 <p style="margin:0 0 12px">${escapeHtml(greeting(data.passengerName))} ${escapeHtml(line)}</p>
 <p style="margin:0">${escapeHtml(refund)}</p>`),
     text: [greeting(data.passengerName), '', line, refund].join('\n'),
+  };
+}
+
+const button = (url: string, label: string) =>
+  `<p style="margin:16px 0 0"><a href="${escapeHtml(url)}" style="display:inline-block;background:#1f6f4a;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold">${label}</a></p>`;
+
+/** An admin invited a new agent. The link is valid for 7 days. */
+export function staffInviteEmail(data: {
+  name: string;
+  operatorName: string;
+  url: string;
+}): RenderedEmail {
+  const line = `${data.operatorName} has invited you to sell and scan tickets on Seatline.`;
+  return {
+    subject: "You're invited to Seatline (link valid 7 days)",
+    html: layout(`
+<h1 style="margin:0 0 16px;font-size:20px">You're invited to Seatline</h1>
+<p style="margin:0 0 12px">${escapeHtml(greeting(data.name))} ${escapeHtml(line)}</p>
+<p style="margin:0">Set your password to get started. The link works for 7 days.</p>
+${button(data.url, 'Set your password')}`),
+    text: [
+      greeting(data.name),
+      '',
+      line,
+      `Set your password (link valid 7 days): ${data.url}`,
+    ].join('\n'),
+  };
+}
+
+/** An admin reset a staff member's password. The link is valid for 1 hour. */
+export function staffResetEmail(data: {
+  name: string;
+  url: string;
+}): RenderedEmail {
+  return {
+    subject: 'Reset your Seatline password (link valid 1 hour)',
+    html: layout(`
+<h1 style="margin:0 0 16px;font-size:20px">Reset your password</h1>
+<p style="margin:0 0 12px">${escapeHtml(greeting(data.name))} your admin asked for a new password for your Seatline account.</p>
+<p style="margin:0">The link works for 1 hour. If you didn't expect this, tell your admin.</p>
+${button(data.url, 'Set a new password')}`),
+    text: [
+      greeting(data.name),
+      '',
+      'Your admin asked for a new password for your Seatline account.',
+      `Set a new password (link valid 1 hour): ${data.url}`,
+    ].join('\n'),
   };
 }
 

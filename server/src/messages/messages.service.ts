@@ -9,6 +9,8 @@ import { MAILER, type EmailMessage, type Mailer } from './mailer.js';
 import {
   lateRefundEmail,
   otpEmail,
+  staffInviteEmail,
+  staffResetEmail,
   ticketEmail,
   tripCancelledEmail,
   tripChangedEmail,
@@ -67,6 +69,32 @@ export class MessagesService {
     private readonly tickets: TicketsService,
     @Inject(MAILER) private readonly mailer: Mailer,
   ) {}
+
+  /** Queues a staff invite with its set-password link. */
+  queueStaffInvite(
+    db: Db,
+    to: string,
+    data: { name: string; operatorName: string; token: string },
+  ) {
+    const url = `${this.webUrl}/staff/accept?token=${encodeURIComponent(data.token)}`;
+    return this.queue(
+      db,
+      to,
+      'staff-invite',
+      staffInviteEmail({ ...data, url }),
+    );
+  }
+
+  /** Queues a staff password reset link. */
+  queueStaffReset(db: Db, to: string, data: { name: string; token: string }) {
+    const url = `${this.webUrl}/staff/reset?token=${encodeURIComponent(data.token)}`;
+    return this.queue(db, to, 'staff-reset', staffResetEmail({ ...data, url }));
+  }
+
+  /** The links an invite or reset email carries, for showing in development. */
+  staffLink(kind: 'accept' | 'reset', token: string) {
+    return `${this.webUrl}/staff/${kind}?token=${encodeURIComponent(token)}`;
+  }
 
   /** Queues a sign-in code email. */
   queueOtp(db: Db, email: string, code: string, minutesValid: number) {
@@ -300,13 +328,14 @@ export class MessagesService {
   }
 }
 
-/**
- * Sign-in codes must not sit in the database: once an OTP email has left (or
- * been given up on), its stored body is wiped.
- */
+// Sign-in codes and staff set-password links work like passwords, so they
+// must not sit in the database: once the email has left (or been given up
+// on), its stored body is wiped.
+const SECRET_TEMPLATES = new Set(['otp', 'staff-invite', 'staff-reset']);
+
 function redacted(template: string) {
-  return template === 'otp'
-    ? { body: '[sign-in code removed after sending]' }
+  return SECRET_TEMPLATES.has(template)
+    ? { body: '[removed after sending: it contained a secret]' }
     : {};
 }
 

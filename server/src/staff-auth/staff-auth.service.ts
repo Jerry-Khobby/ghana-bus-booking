@@ -172,9 +172,13 @@ export class StaffAuthService {
    * A single-use invite or reset link for a staff member. Returns the raw
    * token for the email; only its hash is stored. Used by operator admin.
    */
-  async issueToken(staffUserId: string, type: TokenType): Promise<string> {
+  async issueToken(
+    staffUserId: string,
+    type: TokenType,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<string> {
     const token = randomBytes(32).toString('base64url');
-    await this.prisma.staffToken.create({
+    await db.staffToken.create({
       data: {
         staffUserId,
         type,
