@@ -142,7 +142,13 @@ describe('Holds (e2e)', () => {
         onlineBookingOpen: false,
       });
 
-      for (const trip of [departed, closed]) {
+      // Still SCHEDULED (its bay never freed up) but its time has passed
+      const overdue = await fx.createTrip({
+        loadingStartsAt: minutesFromNow(-90),
+        departureAt: minutesFromNow(-5),
+      });
+
+      for (const trip of [departed, closed, overdue]) {
         const res = await hold(trip.id, '1').expect(409);
         expect(res.body.error.code).toBe('TRIP_NOT_BOOKABLE');
       }
