@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import { BookingsService } from '../bookings/bookings.service.js';
+import { BookingsService, inHold } from '../bookings/bookings.service.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { IdempotencyService } from '../common/idempotency/idempotency.service.js';
 import {
@@ -101,10 +101,12 @@ export class PaymentsService {
   ) {}
 
   /**
-   * POST /holds/:id/pay: starts paying for a held seat. A second tap while
-   * the prompt is still out returns the same payment instead of charging again.
+   * POST /holds/:id/pay: one charge for every seat in the hold. A second tap
+   * while the prompt is still out returns the same payment instead of
+   * charging again. The payment hangs off the hold's first booking.
    */
-  async pay(bookingId: string, dto: PayHoldDto, idempotencyKey?: string) {
+  async pay(id: string, dto: PayHoldDto, idempotencyKey?: string) {
+    const bookingId = await this.bookings.holdIdOf(this.prisma, id);
     const scope = `pay:${bookingId}`;
     const requestHash = this.idempotency.hashRequest(dto);
     if (idempotencyKey) {
@@ -126,11 +128,11 @@ export class PaymentsService {
       });
       await this.bookings.expireStaleHolds(tx, tripId, now);
 
-      // The conditional update locks the booking, so two taps queue here and
+      // The conditional update locks the bookings, so two taps queue here and
       // the second finds the first one's payment.
       const { count } = await tx.booking.updateMany({
         where: {
-          id: bookingId,
+          ...inHold(bookingId),
           status: BookingStatus.HELD,
           holdExpiresAt: { gt: now },
         },
@@ -151,18 +153,19 @@ export class PaymentsService {
         throw await this.notPayable(tx, bookingId);
       }
 
-      const booking = await tx.booking.findUniqueOrThrow({
-        where: { id: bookingId },
-        select: { totalPesewas: true, holdExpiresAt: true },
+      const seats = await tx.booking.findMany({
+        where: { ...inHold(bookingId), status: BookingStatus.PENDING_PAYMENT },
+        select: { id: true, totalPesewas: true, holdExpiresAt: true },
       });
+      const ids = seats.map((s) => s.id);
       const minExpiry = new Date(now.getTime() + MIN_HOLD_WHILE_PAYING_MS);
-      if (booking.holdExpiresAt! < minExpiry) {
-        await tx.booking.update({
-          where: { id: bookingId },
+      if (seats.some((s) => s.holdExpiresAt! < minExpiry)) {
+        await tx.booking.updateMany({
+          where: { id: { in: ids } },
           data: { holdExpiresAt: minExpiry },
         });
         await tx.tripSeat.updateMany({
-          where: { bookingId },
+          where: { bookingId: { in: ids } },
           data: { holdExpiresAt: minExpiry },
         });
       }
@@ -173,7 +176,7 @@ export class PaymentsService {
           method: dto.method,
           network: momo?.network,
           payerPhone: momo?.phone,
-          amountPesewas: booking.totalPesewas,
+          amountPesewas: seats.reduce((sum, s) => sum + s.totalPesewas, 0),
           provider: this.provider.name,
           providerRef: `pay_${randomBytes(12).toString('hex')}`,
           status: PaymentStatus.INITIATED,
@@ -376,47 +379,43 @@ export class PaymentsService {
   }
 
   /**
-   * The tick's refunds: for each REFUND_PENDING booking whose payment hasn't
-   * been sent back yet, asks the provider to refund it and records when, so
-   * it is never asked twice. Failures are retried on the next tick.
-   * Paystack's refund webhook then marks the booking REFUNDED.
+   * The tick's refunds: REFUND_PENDING seats not yet sent back are refunded
+   * against the payment that bought them, one provider call per payment for
+   * those seats' share (a hold of four that lost one seat refunds one seat).
+   * Each seat records when it was asked, so it is never asked twice. Failures
+   * are retried on the next tick. Paystack's refund webhook then marks the
+   * seats REFUNDED.
    */
   async requestRefunds(): Promise<number> {
-    const payments = await this.prisma.payment.findMany({
-      where: {
-        status: PaymentStatus.SUCCESS,
-        booking: { status: BookingStatus.REFUND_PENDING },
-      },
-      select: {
-        id: true,
-        providerRef: true,
-        amountPesewas: true,
-        providerPayload: true,
-      },
+    const due = await this.prisma.booking.findMany({
+      where: { status: BookingStatus.REFUND_PENDING, refundRequestedAt: null },
+      select: { id: true, groupId: true, totalPesewas: true },
     });
+    const byHold = new Map<string, typeof due>();
+    for (const booking of due) {
+      const holdId = booking.groupId ?? booking.id;
+      byHold.set(holdId, [...(byHold.get(holdId) ?? []), booking]);
+    }
+
     let requested = 0;
-    for (const payment of payments) {
-      const payload = (payment.providerPayload ?? {}) as Record<
-        string,
-        unknown
-      >;
-      if (payload.refundRequestedAt) continue;
+    for (const [holdId, seats] of byHold) {
+      const payment = await this.prisma.payment.findFirst({
+        where: { bookingId: holdId, status: PaymentStatus.SUCCESS },
+        select: { providerRef: true },
+      });
+      if (!payment) continue;
+      const amount = seats.reduce((sum, s) => sum + s.totalPesewas, 0);
       try {
-        await this.provider.refund(payment.providerRef, payment.amountPesewas);
+        await this.provider.refund(payment.providerRef, amount);
       } catch (error) {
         this.logger.warn(
           `Refund for ${payment.providerRef} failed: ${(error as Error).message}`,
         );
         continue;
       }
-      await this.prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          providerPayload: {
-            ...payload,
-            refundRequestedAt: new Date().toISOString(),
-          } as Prisma.InputJsonValue,
-        },
+      await this.prisma.booking.updateMany({
+        where: { id: { in: seats.map((s) => s.id) } },
+        data: { refundRequestedAt: new Date() },
       });
       requested++;
     }
@@ -498,9 +497,10 @@ export class PaymentsService {
   }
 
   /**
-   * refund.processed: the money is back with the passenger, so the booking is
-   * REFUNDED. refund.failed: forget that it was asked, so the tick asks again,
-   * and log it for someone to look at. Other refund events are progress only.
+   * refund.processed: the money is back with the passenger, so the seats it
+   * was asked for are REFUNDED. refund.failed: forget that they were asked,
+   * so the tick asks again, and log it for someone to look at. Other refund
+   * events are progress only.
    */
   private async applyRefundEvent(paymentId: string, type: string) {
     const payment = await this.prisma.payment.findUniqueOrThrow({
@@ -508,14 +508,16 @@ export class PaymentsService {
       select: { bookingId: true, providerRef: true, providerPayload: true },
     });
     const payload = (payment.providerPayload ?? {}) as Record<string, unknown>;
+    const asked: Prisma.BookingWhereInput = {
+      ...inHold(payment.bookingId),
+      status: BookingStatus.REFUND_PENDING,
+      refundRequestedAt: { not: null },
+    };
 
     if (type === 'refund.processed') {
       await this.prisma.$transaction([
         this.prisma.booking.updateMany({
-          where: {
-            id: payment.bookingId,
-            status: BookingStatus.REFUND_PENDING,
-          },
+          where: asked,
           data: { status: BookingStatus.REFUNDED },
         }),
         this.prisma.payment.update({
@@ -530,10 +532,9 @@ export class PaymentsService {
       ]);
       this.logger.log(`Refund of ${payment.providerRef} completed`);
     } else if (type === 'refund.failed') {
-      const { refundRequestedAt: _asked, ...rest } = payload;
-      await this.prisma.payment.update({
-        where: { id: paymentId },
-        data: { providerPayload: rest as Prisma.InputJsonValue },
+      await this.prisma.booking.updateMany({
+        where: asked,
+        data: { refundRequestedAt: null },
       });
       this.logger.error(
         `Refund of ${payment.providerRef} failed at Paystack; the tick will ask again`,
@@ -552,7 +553,7 @@ export class PaymentsService {
     // Emails queued in the transaction, sent once it has committed
     const outbox: (string | null)[] = [];
     // What changed, announced once it has committed
-    let touched: { paymentId: string; tripId: string; seat: string } | null =
+    let touched: { paymentId: string; tripId: string; seats: string[] } | null =
       null;
     await this.prisma.$transaction(async (tx) => {
       touched = null;
@@ -567,7 +568,7 @@ export class PaymentsService {
           id: true,
           status: true,
           amountPesewas: true,
-          booking: { select: bookingForResult },
+          bookingId: true,
         },
       });
 
@@ -579,10 +580,16 @@ export class PaymentsService {
         return;
       }
       if (result.status === 'pending') return;
+      // Every seat the payment is for
+      const bookings = await tx.booking.findMany({
+        where: inHold(payment.bookingId),
+        orderBy: { id: 'asc' },
+        select: bookingForResult,
+      });
       touched = {
         paymentId: payment.id,
-        tripId: payment.booking.tripId,
-        seat: payment.booking.seatLabel,
+        tripId: bookings[0].tripId,
+        seats: bookings.map((b) => b.seatLabel),
       };
 
       const raw = (result.raw ?? undefined) as Prisma.InputJsonValue;
@@ -616,7 +623,9 @@ export class PaymentsService {
             providerPayload: raw,
           },
         });
-        outbox.push(await this.confirmBooking(tx, payment.booking, now));
+        for (const booking of bookings) {
+          outbox.push(await this.confirmBooking(tx, booking, now));
+        }
         return;
       }
 
@@ -636,20 +645,22 @@ export class PaymentsService {
           providerPayload: raw,
         },
       });
-      await this.reopenHold(tx, payment.booking, now);
+      for (const booking of bookings) {
+        await this.reopenHold(tx, booking, now);
+      }
     }, TX_OPTIONS);
     await this.messages.send(outbox);
     const changed = touched as {
       paymentId: string;
       tripId: string;
-      seat: string;
+      seats: string[];
     } | null;
     if (changed) {
       this.logger.log(
         `Payment ${changed.paymentId} (${providerRef}) settled: ${result.status}`,
       );
       this.realtime.paymentChanged(changed.paymentId);
-      this.realtime.seatsChanged(changed.tripId, [changed.seat]);
+      this.realtime.seatsChanged(changed.tripId, changed.seats);
       this.realtime.tripChanged(changed.tripId);
     }
   }
@@ -867,6 +878,7 @@ export class PaymentsService {
         failureCode: true,
         failureMessage: true,
         providerPayload: true,
+        bookingId: true,
         booking: {
           select: {
             code: true,
@@ -888,6 +900,18 @@ export class PaymentsService {
     const ticketed =
       payment.status === PaymentStatus.SUCCESS &&
       booking.status === BookingStatus.CONFIRMED;
+    // One ticket per seat paid for; a seat lost to a late payment is refunded
+    const tickets =
+      payment.status === PaymentStatus.SUCCESS
+        ? await this.prisma.booking.findMany({
+            where: {
+              ...inHold(payment.bookingId),
+              status: BookingStatus.CONFIRMED,
+            },
+            orderBy: { id: 'asc' },
+            select: { code: true, seatLabel: true },
+          })
+        : [];
 
     const displayText =
       payment.method === PaymentMethod.MOMO &&
@@ -930,6 +954,12 @@ export class PaymentsService {
       ticketToken: ticketed
         ? this.tickets.linkToken(booking.code, booking.trip)
         : null,
+      // Every seat's ticket, for a hold of several seats
+      tickets: tickets.map((t) => ({
+        code: t.code,
+        seatLabel: t.seatLabel,
+        ticketToken: this.tickets.linkToken(t.code, booking.trip),
+      })),
       secondsLeftOnHold,
     };
   }

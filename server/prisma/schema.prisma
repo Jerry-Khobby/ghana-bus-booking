@@ -457,34 +457,40 @@ model StaffToken {
 
 /// One seat on one trip; it is the ticket once confirmed.
 model Booking {
-  id            String         @id @default(uuid(7)) @db.Uuid
+  id                String         @id @default(uuid(7)) @db.Uuid
   /// e.g. "SL-7Q4K-2M" (Crockford base32).
-  code          String         @unique
-  operatorId    String         @db.Uuid
-  tripId        String         @db.Uuid
-  tripSeatId    String         @db.Uuid
-  seatLabel     String
+  code              String         @unique
+  operatorId        String         @db.Uuid
+  tripId            String         @db.Uuid
+  tripSeatId        String         @db.Uuid
+  seatLabel         String
+  /// Seats held and paid for together point at the hold's first booking,
+  /// whose id is the hold id and which carries the one payment. Null on that
+  /// first booking and on single seats.
+  groupId           String?        @db.Uuid
   /// Null for guests.
-  passengerId   String?        @db.Uuid
-  contactEmail  String?
-  contactPhone  String?
-  passengerName String?
-  channel       BookingChannel
+  passengerId       String?        @db.Uuid
+  contactEmail      String?
+  contactPhone      String?
+  passengerName     String?
+  channel           BookingChannel
   /// Walk-ins only.
-  soldById      String?        @db.Uuid
-  status        BookingStatus  @default(HELD)
-  farePesewas   Int
-  feePesewas    Int
-  totalPesewas  Int
-  holdExpiresAt DateTime?      @db.Timestamptz(3)
-  holdTokenHash String?
-  confirmedAt   DateTime?      @db.Timestamptz(3)
-  boardedAt     DateTime?      @db.Timestamptz(3)
-  cancelledAt   DateTime?      @db.Timestamptz(3)
-  boardedById   String?        @db.Uuid
-  qrNonce       String
-  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime       @updatedAt @db.Timestamptz(3)
+  soldById          String?        @db.Uuid
+  status            BookingStatus  @default(HELD)
+  farePesewas       Int
+  feePesewas        Int
+  totalPesewas      Int
+  holdExpiresAt     DateTime?      @db.Timestamptz(3)
+  holdTokenHash     String?
+  confirmedAt       DateTime?      @db.Timestamptz(3)
+  boardedAt         DateTime?      @db.Timestamptz(3)
+  cancelledAt       DateTime?      @db.Timestamptz(3)
+  /// Set once the provider has been asked to send this seat's money back.
+  refundRequestedAt DateTime?      @db.Timestamptz(3)
+  boardedById       String?        @db.Uuid
+  qrNonce           String
+  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
 
   operator    Operator          @relation(fields: [operatorId], references: [id])
   trip        Trip              @relation(fields: [tripId], references: [id])
@@ -504,6 +510,7 @@ model Booking {
   @@index([operatorId, confirmedAt])
   @@index([contactEmail])
   @@index([tripId, status])
+  @@index([groupId])
 }
 
 /// Every attempt to pay for a booking; a booking can have several.

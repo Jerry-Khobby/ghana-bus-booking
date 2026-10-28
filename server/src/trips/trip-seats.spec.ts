@@ -102,12 +102,12 @@ describe('buildSeatMap', () => {
       map.cells[5].status,
     ];
 
-    expect(statuses(buildSeatMap(snapshot, seats, NOW, '1'))).toEqual([
+    expect(statuses(buildSeatMap(snapshot, seats, NOW, ['1']))).toEqual([
       'MINE',
       'HELD',
     ]);
     // Once the hold runs out the seat is just available again
-    expect(statuses(buildSeatMap(snapshot, seats, minutes(5), '1'))).toEqual([
+    expect(statuses(buildSeatMap(snapshot, seats, minutes(5), ['1']))).toEqual([
       'AVAILABLE',
       'AVAILABLE',
     ]);

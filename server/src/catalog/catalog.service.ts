@@ -289,13 +289,13 @@ export class CatalogService {
       trip.layoutSnapshot as unknown as LayoutSnapshot,
       trip.seats,
       now,
-      await this.mySeat(id, holdToken),
+      await this.mySeats(id, holdToken),
     );
   }
 
   /**
    * GET /trips/:id/seats/stream: every seat change on the trip, live. The
-   * holder's own seat comes through as MINE (their hold token is checked
+   * holder's own seats come through as MINE (their hold token is checked
    * once, when the stream opens).
    */
   async seatStream(id: string, holdToken?: string) {
@@ -304,22 +304,22 @@ export class CatalogService {
       select: { id: true },
     });
     if (!trip) throw tripNotFound();
-    const mine = await this.mySeat(id, holdToken);
+    const mine = await this.mySeats(id, holdToken);
     return this.realtime.seatEvents(id).pipe(
       map((seat) => ({
         type: 'seat',
         data:
-          seat.label === mine && seat.status === SeatStatus.HELD
+          mine.includes(seat.label) && seat.status === SeatStatus.HELD
             ? { ...seat, status: 'MINE' as const }
             : seat,
       })),
     );
   }
 
-  /** The seat this hold token holds on the trip, if any. */
-  private async mySeat(tripId: string, holdToken?: string) {
-    if (!holdToken) return undefined;
-    const booking = await this.prisma.booking.findFirst({
+  /** The seats this hold token holds on the trip. */
+  private async mySeats(tripId: string, holdToken?: string) {
+    if (!holdToken) return [];
+    const bookings = await this.prisma.booking.findMany({
       where: {
         tripId,
         holdTokenHash: hashHoldToken(holdToken),
@@ -327,7 +327,7 @@ export class CatalogService {
       },
       select: { seatLabel: true },
     });
-    return booking?.seatLabel;
+    return bookings.map((b) => b.seatLabel);
   }
 
   /** Free seats per trip, in one query however many trips there are. */

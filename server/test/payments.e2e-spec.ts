@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import { PaymentsService } from './../src/payments/payments.service.js';
 import { PrismaService } from './../src/prisma/prisma.service.js';
 import {
   createFixture,
@@ -301,6 +302,128 @@ describe('Payments (e2e)', () => {
         bookingStatus: 'REFUND_PENDING',
       });
       expect((await seat(trip.id, '1')).bookingId).toBe(other.body.holdId);
+    });
+  });
+
+  describe('several seats', () => {
+    async function holdSeats(labels: string[]) {
+      const trip = await fx.createTrip({
+        loadingStartsAt: minutesFromNow(60),
+        departureAt: minutesFromNow(120),
+      });
+      const res = await http()
+        .post('/api/v1/holds')
+        .send({ tripId: trip.id, seatLabels: labels })
+        .expect(201);
+      return {
+        trip,
+        hold: res.body as { holdId: string; holdToken: string },
+      };
+    }
+    const seatsOf = (tripId: string) =>
+      prisma.booking.findMany({
+        where: { tripId },
+        orderBy: { id: 'asc' },
+      });
+
+    it('charges once for the whole hold and issues a ticket per seat', async () => {
+      const { trip, hold } = await holdSeats(['2', '1']);
+
+      const started = await pay(hold).expect(201);
+      expect(started.body).toMatchObject({
+        status: 'PENDING',
+        amountPesewas: 5100 * 2,
+        tickets: [],
+      });
+      expect(
+        await prisma.payment.count({ where: { booking: { tripId: trip.id } } }),
+      ).toBe(1);
+      expect((await seatsOf(trip.id)).map((b) => b.status)).toEqual([
+        'PENDING_PAYMENT',
+        'PENDING_PAYMENT',
+      ]);
+
+      const paid = await verify(started.body.paymentId, hold.holdToken).expect(
+        200,
+      );
+      const bookings = await seatsOf(trip.id);
+      expect(bookings.map((b) => b.status)).toEqual(['CONFIRMED', 'CONFIRMED']);
+      expect(paid.body.tickets).toEqual([
+        {
+          code: bookings[0].code,
+          seatLabel: '2',
+          ticketToken: expect.any(String),
+        },
+        {
+          code: bookings[1].code,
+          seatLabel: '1',
+          ticketToken: expect.any(String),
+        },
+      ]);
+      expect(bookings[1]).toMatchObject({
+        contactEmail: 'ama@example.com',
+        passengerName: 'Ama Mensah',
+      });
+      const after = await prisma.trip.findUniqueOrThrow({
+        where: { id: trip.id },
+      });
+      expect(after.seatsSold).toBe(2);
+
+      // Each ticket opens with the hold token it was paid with
+      await http()
+        .get(`/api/v1/tickets/${bookings[1].code}`)
+        .set('X-Hold-Token', hold.holdToken)
+        .expect(200);
+    });
+
+    it('keeps every seat held after a decline', async () => {
+      const { trip, hold } = await holdSeats(['1', '2']);
+      const started = await pay(hold, { phone: DECLINES }).expect(201);
+      const res = await verify(started.body.paymentId, hold.holdToken).expect(
+        200,
+      );
+      expect(res.body).toMatchObject({ status: 'FAILED', tickets: [] });
+      expect((await seatsOf(trip.id)).map((b) => b.status)).toEqual([
+        'HELD',
+        'HELD',
+      ]);
+    });
+
+    it('refunds only the seat lost to a late payment', async () => {
+      const { trip, hold } = await holdSeats(['1', '2']);
+      const started = await pay(hold).expect(201);
+      const past = minutesFromNow(-1);
+      await prisma.booking.updateMany({
+        where: { tripId: trip.id },
+        data: { holdExpiresAt: past },
+      });
+      await prisma.tripSeat.updateMany({
+        where: { tripId: trip.id, status: 'HELD' },
+        data: { holdExpiresAt: past },
+      });
+      await http()
+        .post('/api/v1/holds')
+        .send({ tripId: trip.id, seatLabel: '2' })
+        .expect(201);
+
+      const res = await verify(started.body.paymentId, hold.holdToken).expect(
+        200,
+      );
+      expect(
+        res.body.tickets.map((t: { seatLabel: string }) => t.seatLabel),
+      ).toEqual(['1']);
+      const [kept, lost] = await prisma.booking.findMany({
+        where: { OR: [{ id: hold.holdId }, { groupId: hold.holdId }] },
+        orderBy: { id: 'asc' },
+      });
+      expect(kept.status).toBe('CONFIRMED');
+      expect(lost.status).toBe('REFUND_PENDING');
+
+      await app.get(PaymentsService).requestRefunds();
+      expect((await booking(lost.id)).refundRequestedAt).toEqual(
+        expect.any(Date),
+      );
+      expect((await booking(kept.id)).refundRequestedAt).toBeNull();
     });
   });
 

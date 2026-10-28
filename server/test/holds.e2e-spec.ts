@@ -198,6 +198,107 @@ describe('Holds (e2e)', () => {
     }, 60_000);
   });
 
+  describe('several seats', () => {
+    const holdMany = (tripId: string, seatLabels: string[], token?: string) => {
+      const req = request(app.getHttpServer())
+        .post('/api/v1/holds')
+        .send({ tripId, seatLabels });
+      return token ? req.set('X-Hold-Token', token) : req;
+    };
+
+    it('holds them on one timer and prices the whole hold', async () => {
+      const trip = await openTrip();
+      const res = await holdMany(trip.id, ['3', '1']).expect(201);
+      const { holdId, holdToken, feePesewas } = res.body;
+      expect(res.body).toMatchObject({
+        seatLabel: '3',
+        seatLabels: ['3', '1'],
+        farePesewas: 5000,
+        totalPesewas: (5000 + feePesewas) * 2,
+      });
+
+      expect(await seatMap(trip.id, holdToken)).toEqual({
+        1: 'MINE',
+        2: 'AVAILABLE',
+        3: 'MINE',
+        4: 'AVAILABLE',
+      });
+      const summary = await getHold(holdId, holdToken).expect(200);
+      expect(summary.body).toMatchObject({
+        holdId,
+        seatLabels: ['3', '1'],
+        totalPesewas: (5000 + feePesewas) * 2,
+      });
+
+      const bookings = await prisma.booking.findMany({
+        where: { tripId: trip.id },
+        orderBy: { id: 'asc' },
+      });
+      expect(bookings).toMatchObject([
+        { id: holdId, seatLabel: '3', groupId: null },
+        { seatLabel: '1', groupId: holdId },
+      ]);
+      // Same timer on every seat
+      expect(bookings[1].holdExpiresAt).toEqual(bookings[0].holdExpiresAt);
+    });
+
+    it('holds all of them or none', async () => {
+      const trip = await openTrip();
+      await hold(trip.id, '2').expect(201);
+
+      const res = await holdMany(trip.id, ['1', '2']).expect(409);
+      expect(res.body.error).toMatchObject({
+        code: 'SEAT_TAKEN',
+        message: 'Seat 2 was just taken. Pick another.',
+        details: { seats: ['2'] },
+      });
+      // Seat 1 was not kept back
+      expect((await seatMap(trip.id))[1]).toBe('AVAILABLE');
+    });
+
+    it('releases every seat together, and a new hold replaces them all', async () => {
+      const trip = await openTrip();
+      const first = await holdMany(trip.id, ['1', '2']).expect(201);
+      const second = await holdMany(
+        trip.id,
+        ['3', '4'],
+        first.body.holdToken,
+      ).expect(201);
+      expect(await seatMap(trip.id)).toMatchObject({
+        1: 'AVAILABLE',
+        2: 'AVAILABLE',
+        3: 'HELD',
+        4: 'HELD',
+      });
+
+      await release(second.body.holdId, second.body.holdToken).expect(204);
+      expect(Object.values(await seatMap(trip.id))).toEqual([
+        'AVAILABLE',
+        'AVAILABLE',
+        'AVAILABLE',
+        'AVAILABLE',
+      ]);
+    });
+
+    it('rejects bad seat lists', async () => {
+      const trip = await openTrip();
+      await holdMany(trip.id, []).expect(400);
+      await holdMany(trip.id, ['1', '1']).expect(400);
+      await holdMany(trip.id, ['1', '2', '3', '4', '5', '6', '7']).expect(400);
+      await request(app.getHttpServer())
+        .post('/api/v1/holds')
+        .send({ tripId: trip.id, seatLabel: '1', seatLabels: ['2'] })
+        .expect(400);
+
+      const missing = await holdMany(trip.id, ['1', '99']).expect(404);
+      expect(missing.body.error).toMatchObject({
+        code: 'SEAT_NOT_FOUND',
+        message: 'There is no seat 99 on this bus',
+        details: { seats: ['99'] },
+      });
+    });
+  });
+
   describe('GET /holds/:id', () => {
     it('returns the summary and how long the seat stays held', async () => {
       const trip = await openTrip();

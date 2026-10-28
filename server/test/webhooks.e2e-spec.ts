@@ -102,26 +102,23 @@ describe('Paystack webhooks (e2e)', () => {
       data: { id: `txn-${fx.suffix}-2`, reference: providerRef },
     }).expect(200);
     // As if the trip was cancelled and the refund requested
-    await prisma.booking.update({
-      where: { id: hold.holdId },
-      data: { status: 'REFUND_PENDING' },
-    });
-    await prisma.payment.update({
-      where: { id: paymentId },
-      data: {
-        providerPayload: { refundRequestedAt: new Date().toISOString() },
-      },
-    });
+    const asked = () =>
+      prisma.booking.update({
+        where: { id: hold.holdId },
+        data: { status: 'REFUND_PENDING', refundRequestedAt: new Date() },
+      });
+    await asked();
 
     await webhook({
       event: 'refund.failed',
       data: { id: `rf-${fx.suffix}-1`, transaction_reference: providerRef },
     }).expect(200);
-    const afterFail = await prisma.payment.findUniqueOrThrow({
-      where: { id: paymentId },
+    const afterFail = await prisma.booking.findUniqueOrThrow({
+      where: { id: hold.holdId },
     });
     // The tick will ask Paystack again
-    expect(afterFail.providerPayload).not.toHaveProperty('refundRequestedAt');
+    expect(afterFail.refundRequestedAt).toBeNull();
+    await asked();
 
     await webhook({
       event: 'refund.processed',

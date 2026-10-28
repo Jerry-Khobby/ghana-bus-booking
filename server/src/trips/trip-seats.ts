@@ -81,20 +81,20 @@ export interface SeatMap {
 
 /**
  * The trip's layout with each seat's live status merged in. Only the status
- * goes out: never who holds or bought a seat. `mineLabel` is the seat the
+ * goes out: never who holds or bought a seat. `mine` are the seats the
  * caller holds, shown as MINE while the hold lasts.
  */
 export function buildSeatMap(
   snapshot: LayoutSnapshot,
   seats: { label: string; status: SeatStatus; holdExpiresAt: Date | null }[],
   now: Date,
-  mineLabel?: string,
+  mine: string[] = [],
 ): SeatMap {
   const statusByLabel = new Map(
     seats.map((seat): [string, SeatMapStatus] => {
       const status = effectiveSeatStatus(seat, now);
-      const mine = seat.label === mineLabel && status === SeatStatus.HELD;
-      return [seat.label, mine ? 'MINE' : status];
+      const isMine = mine.includes(seat.label) && status === SeatStatus.HELD;
+      return [seat.label, isMine ? 'MINE' : status];
     }),
   );
 

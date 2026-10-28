@@ -150,11 +150,9 @@ describe('POST /internal/tick (e2e)', () => {
     // Recorded, so the next tick doesn't ask again
     await tick().expect(200);
     expect(fake.refunds.filter((r) => r === providerRef)).toHaveLength(1);
-    const payment = await prisma.payment.findUniqueOrThrow({
-      where: { id: paymentId },
+    const booking = await prisma.booking.findUniqueOrThrow({
+      where: { id: hold.holdId },
     });
-    expect(payment.providerPayload).toMatchObject({
-      refundRequestedAt: expect.any(String),
-    });
+    expect(booking.refundRequestedAt).toEqual(expect.any(Date));
   });
 });

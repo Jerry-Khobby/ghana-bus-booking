@@ -23,6 +23,20 @@ type Db = PrismaService | Prisma.TransactionClient;
 /** Bookings that still have a claim on their seat. */
 const OPEN_STATUSES = [BookingStatus.HELD, BookingStatus.PENDING_PAYMENT];
 
+/**
+ * Every booking in a hold: the first one, whose id is the hold id, and the
+ * seats taken with it. A single seat or a walk-in is a hold of one.
+ */
+export const inHold = (holdId: string): Prisma.BookingWhereInput => ({
+  OR: [{ id: holdId }, { groupId: holdId }],
+});
+
+/** "Seat 14" / "Seats 14 and 15" / "Seats 3, 4 and 5" */
+function seatsPhrase(labels: string[]) {
+  if (labels.length === 1) return `Seat ${labels[0]}`;
+  return `Seats ${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`;
+}
+
 // Fifty people tapping one seat queue on its row lock; give them time to
 // get a connection and finish rather than failing with a timeout.
 const TX_OPTIONS = { maxWait: 10_000, timeout: 10_000 };
@@ -78,17 +92,26 @@ export class BookingsService {
   }
 
   /**
-   * POST /holds: takes one seat for holdMinutes. The database decides who wins
-   * a race: one conditional update on the seat row, inside a transaction.
-   * `previousToken` is the caller's hold token, if they have one, so taking a
-   * new seat on the same trip releases their old one; a signed-in passenger's
-   * old hold on the trip is released the same way.
+   * POST /holds: takes one seat, or up to six together, for holdMinutes. The
+   * database decides who wins a race: one conditional update per seat row,
+   * inside a transaction, so either every seat is held or none is.
+   * `previousToken` is the caller's hold token, if they have one, so a new
+   * hold on the same trip releases their old one; a signed-in passenger's old
+   * hold on the trip is released the same way.
    */
   async createHold(
     dto: CreateHoldDto,
     previousToken?: string,
     passengerId?: string,
   ) {
+    if (dto.seatLabel !== undefined && dto.seatLabels !== undefined) {
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Send seatLabel or seatLabels, not both',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const labels = dto.seatLabels ?? [dto.seatLabel!];
     const now = new Date();
     await this.trips.refreshStatus(dto.tripId, now);
 
@@ -144,121 +167,158 @@ export class BookingsService {
 
     // Seats this request let go of, announced once it commits
     const released: string[] = [];
-    const booking = await this.prisma.$transaction(async (tx) => {
+    const holdId = await this.prisma.$transaction(async (tx) => {
       released.length = 0;
       await this.expireStaleHolds(tx, trip.id, now);
 
-      // One hold per person per trip: let go of the old seat first
+      // One hold per person per trip: let go of the old seats first
       if (passengerId) {
-        const label = await this.cancelHeld(
-          tx,
-          { tripId: trip.id, passengerId },
-          now,
+        released.push(
+          ...(await this.cancelHeld(tx, { tripId: trip.id, passengerId }, now)),
         );
-        if (label) released.push(label);
       }
       if (previousToken) {
-        const label = await this.cancelHeld(
-          tx,
-          {
-            tripId: trip.id,
-            holdTokenHash: hashHoldToken(previousToken),
-          },
-          now,
+        released.push(
+          ...(await this.cancelHeld(
+            tx,
+            {
+              tripId: trip.id,
+              holdTokenHash: hashHoldToken(previousToken),
+            },
+            now,
+          )),
         );
-        if (label) released.push(label);
       }
 
-      const seat = await tx.tripSeat.findUnique({
-        where: { tripId_label: { tripId: trip.id, label: dto.seatLabel } },
-        select: { id: true },
+      const seats = await tx.tripSeat.findMany({
+        where: { tripId: trip.id, label: { in: labels } },
+        // Always lock seat rows in the same order, so two holds that share
+        // seats queue behind each other instead of deadlocking
+        orderBy: { id: 'asc' },
+        select: { id: true, label: true },
       });
-      if (!seat) {
+      const missing = labels.filter((l) => !seats.some((s) => s.label === l));
+      if (missing.length) {
         throw new AppException(
           'SEAT_NOT_FOUND',
-          `There is no seat ${dto.seatLabel} on this bus`,
+          `There is no ${seatsPhrase(missing).toLowerCase()} on this bus`,
           HttpStatus.NOT_FOUND,
+          { seats: missing },
         );
       }
 
-      // Claim the seat first. Postgres locks the row: a second request waits
+      // Claim the seats first. Postgres locks each row: a second request waits
       // here, re-checks the where clause once the first commits, and updates
       // nothing. bookingId is left alone in this update on purpose: it has a
       // unique index, so setting it takes a stronger lock that deadlocks with
       // the foreign-key lock every competing booking insert takes on the seat.
-      const { count } = await tx.tripSeat.updateMany({
-        where: { id: seat.id, ...availableSeatWhere(now) },
-        data: { status: SeatStatus.HELD, holdExpiresAt: expiresAt },
-      });
-      if (!count) {
+      const taken: string[] = [];
+      for (const seat of seats) {
+        const { count } = await tx.tripSeat.updateMany({
+          where: { id: seat.id, ...availableSeatWhere(now) },
+          data: { status: SeatStatus.HELD, holdExpiresAt: expiresAt },
+        });
+        if (!count) taken.push(seat.label);
+      }
+      if (taken.length) {
+        // Throwing rolls back the seats this request did get
+        const ordered = labels.filter((l) => taken.includes(l));
         throw new AppException(
           'SEAT_TAKEN',
-          `Seat ${dto.seatLabel} was just taken. Pick another.`,
+          ordered.length === 1
+            ? `Seat ${ordered[0]} was just taken. Pick another.`
+            : `${seatsPhrase(ordered)} were just taken. Pick others.`,
           HttpStatus.CONFLICT,
+          { seats: ordered },
         );
       }
 
-      const booking = await tx.booking.create({
-        data: {
-          code: generateTicketCode(),
-          operatorId: trip.operatorId,
-          tripId: trip.id,
-          tripSeatId: seat.id,
-          seatLabel: dto.seatLabel,
-          channel: BookingChannel.ONLINE,
-          status: BookingStatus.HELD,
-          farePesewas,
-          feePesewas,
-          totalPesewas: farePesewas + feePesewas,
-          holdExpiresAt: expiresAt,
-          holdTokenHash: hash,
-          passengerId,
-          qrNonce: randomBytes(16).toString('base64url'),
-        },
-        select: { id: true },
-      });
-      // We already hold the row lock, so nobody else can be waiting to link
-      await tx.tripSeat.update({
-        where: { id: seat.id },
-        data: { bookingId: booking.id },
-      });
+      // One booking per seat, in the order they were picked; the first one's
+      // id is the hold id
+      let firstId: string | undefined;
+      for (const label of labels) {
+        const seat = seats.find((s) => s.label === label)!;
+        const booking = await tx.booking.create({
+          data: {
+            code: generateTicketCode(),
+            operatorId: trip.operatorId,
+            tripId: trip.id,
+            tripSeatId: seat.id,
+            seatLabel: label,
+            groupId: firstId,
+            channel: BookingChannel.ONLINE,
+            status: BookingStatus.HELD,
+            farePesewas,
+            feePesewas,
+            totalPesewas: farePesewas + feePesewas,
+            holdExpiresAt: expiresAt,
+            holdTokenHash: hash,
+            passengerId,
+            qrNonce: randomBytes(16).toString('base64url'),
+          },
+          select: { id: true },
+        });
+        firstId ??= booking.id;
+        // We already hold the row lock, so nobody else can be waiting to link
+        await tx.tripSeat.update({
+          where: { id: seat.id },
+          data: { bookingId: booking.id },
+        });
 
-      // If we took a seat whose hold had just run out, its old booking expires
-      await tx.booking.updateMany({
-        where: {
-          tripSeatId: seat.id,
-          id: { not: booking.id },
-          status: { in: OPEN_STATUSES },
-        },
-        data: { status: BookingStatus.EXPIRED },
-      });
-      return booking;
+        // If we took a seat whose hold had just run out, its old booking expires
+        await tx.booking.updateMany({
+          where: {
+            tripSeatId: seat.id,
+            id: { not: booking.id },
+            status: { in: OPEN_STATUSES },
+          },
+          data: { status: BookingStatus.EXPIRED },
+        });
+      }
+      return firstId!;
     }, TX_OPTIONS);
-    this.realtime.seatsChanged(trip.id, [dto.seatLabel, ...released]);
+    this.realtime.seatsChanged(trip.id, [...labels, ...released]);
     this.realtime.tripChanged(trip.id);
 
     return {
-      holdId: booking.id,
+      holdId,
       holdToken: token,
       tripId: trip.id,
-      seatLabel: dto.seatLabel,
+      seatLabel: labels[0],
+      seatLabels: labels,
       expiresAt,
+      // Per seat; totalPesewas is the whole hold
       farePesewas,
       feePesewas,
-      totalPesewas: farePesewas + feePesewas,
+      totalPesewas: (farePesewas + feePesewas) * labels.length,
       currency: 'GHS' as const,
     };
   }
 
+  /** The hold a booking belongs to: its first booking's id. */
+  async holdIdOf(db: Db, bookingId: string) {
+    const { id, groupId } = await db.booking.findUniqueOrThrow({
+      where: { id: bookingId },
+      select: { id: true, groupId: true },
+    });
+    return groupId ?? id;
+  }
+
   /** GET /holds/:id: the Payment screen's summary and "held for 03:42" timer. */
-  async getHold(id: string) {
+  async getHold(bookingId: string) {
     const now = new Date();
+    const id = await this.holdIdOf(this.prisma, bookingId);
     const { tripId } = await this.prisma.booking.findUniqueOrThrow({
       where: { id },
       select: { tripId: true },
     });
     await this.expireStaleHolds(this.prisma, tripId, now);
 
+    const seats = await this.prisma.booking.findMany({
+      where: inHold(id),
+      orderBy: { id: 'asc' },
+      select: { seatLabel: true, totalPesewas: true },
+    });
     const booking = await this.prisma.booking.findUniqueOrThrow({
       where: { id },
       select: {
@@ -303,32 +363,35 @@ export class BookingsService {
       holdId: booking.id,
       status: booking.status,
       seatLabel: booking.seatLabel,
+      seatLabels: seats.map((s) => s.seatLabel),
       trip: {
         ...trip,
         origin: route.originStation,
         destination: route.destinationStation,
       },
+      // Per seat; totalPesewas is the whole hold
       farePesewas: booking.farePesewas,
       feePesewas: booking.feePesewas,
-      totalPesewas: booking.totalPesewas,
+      totalPesewas: seats.reduce((sum, s) => sum + s.totalPesewas, 0),
       currency: 'GHS' as const,
       expiresAt: booking.holdExpiresAt,
       secondsLeft,
     };
   }
 
-  /** DELETE /holds/:id: "Cancel and release my seat". Only while HELD. */
-  async releaseHold(id: string) {
+  /** DELETE /holds/:id: "Cancel and release my seats". Only while HELD. */
+  async releaseHold(bookingId: string) {
     const now = new Date();
     const freed = await this.prisma.$transaction(async (tx) => {
+      const id = await this.holdIdOf(tx, bookingId);
       const { tripId } = await tx.booking.findUniqueOrThrow({
         where: { id },
         select: { tripId: true },
       });
       await this.expireStaleHolds(tx, tripId, now);
 
-      const label = await this.cancelHeld(tx, { id }, now);
-      if (label) return { tripId, label };
+      const labels = await this.cancelHeld(tx, inHold(id), now);
+      if (labels.length) return { tripId, labels };
 
       const { status } = await tx.booking.findUniqueOrThrow({
         where: { id },
@@ -355,7 +418,7 @@ export class BookingsService {
         { status },
       );
     }, TX_OPTIONS);
-    this.realtime.seatsChanged(freed.tripId, [freed.label]);
+    this.realtime.seatsChanged(freed.tripId, freed.labels);
     this.realtime.tripChanged(freed.tripId);
   }
 
@@ -393,31 +456,33 @@ export class BookingsService {
     }
   }
 
-  /** Cancels a HELD booking and frees its seat. Returns its label, or null. */
+  /** Cancels the HELD bookings that match and frees their seats. Returns their labels. */
   private async cancelHeld(
     tx: Prisma.TransactionClient,
     where: Prisma.BookingWhereInput,
     now: Date,
   ) {
-    const held = await tx.booking.findFirst({
-      where: { ...where, status: BookingStatus.HELD },
+    const held = await tx.booking.findMany({
+      where: { AND: [where, { status: BookingStatus.HELD }] },
       select: { id: true, seatLabel: true },
     });
-    if (!held) return null;
-
-    const { count } = await tx.booking.updateMany({
-      where: { id: held.id, status: BookingStatus.HELD },
-      data: { status: BookingStatus.CANCELLED, cancelledAt: now },
-    });
-    if (!count) return null;
-    await tx.tripSeat.updateMany({
-      where: { bookingId: held.id },
-      data: {
-        status: SeatStatus.AVAILABLE,
-        holdExpiresAt: null,
-        bookingId: null,
-      },
-    });
-    return held.seatLabel;
+    const freed: string[] = [];
+    for (const booking of held) {
+      const { count } = await tx.booking.updateMany({
+        where: { id: booking.id, status: BookingStatus.HELD },
+        data: { status: BookingStatus.CANCELLED, cancelledAt: now },
+      });
+      if (!count) continue;
+      await tx.tripSeat.updateMany({
+        where: { bookingId: booking.id },
+        data: {
+          status: SeatStatus.AVAILABLE,
+          holdExpiresAt: null,
+          bookingId: null,
+        },
+      });
+      freed.push(booking.seatLabel);
+    }
+    return freed;
   }
 }
