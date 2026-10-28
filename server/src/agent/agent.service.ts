@@ -83,6 +83,17 @@ const nextTripSelect = {
   loadingStartsAt: true,
 } satisfies Prisma.TripSelect;
 
+const QUEUE_LENGTH = 3;
+
+const queueTripSelect = {
+  ...nextTripSelect,
+  seatsTotal: true,
+  bus: { select: { plate: true } },
+  route: {
+    select: { destinationStation: { select: { name: true, city: true } } },
+  },
+} satisfies Prisma.TripSelect;
+
 /** The loading console: what's at the bay, who's on it, and moving it on. */
 @Injectable()
 export class AgentService {
@@ -128,6 +139,7 @@ export class AgentService {
         counts: null,
         seats: [],
         nextTrip: null,
+        queue: [],
       };
     }
 
@@ -145,15 +157,7 @@ export class AgentService {
     const held = seats.filter((s) => s.status === SeatStatus.HELD).length;
     const blocked = seats.filter((s) => s.status === SeatStatus.BLOCKED).length;
 
-    const nextTrip = await this.prisma.trip.findFirst({
-      where: {
-        bayId: bay.id,
-        id: { not: current.id },
-        ...scheduledToday(now),
-      },
-      orderBy: nextOrder,
-      select: nextTripSelect,
-    });
+    const queue = await this.bayQueue(bay.id, current.id, now);
 
     return {
       bay: bayView,
@@ -185,8 +189,44 @@ export class AgentService {
         free: current.seatsTotal - sold.length - held - blocked,
       },
       seats: seats.map(({ channel: _channel, ...seat }) => seat),
-      nextTrip,
+      nextTrip: queue[0] ?? null,
+      queue,
     };
+  }
+
+  /**
+   * The next few buses booked onto the bay today, with what has sold on each,
+   * for the console's "Next at this bay" list.
+   */
+  private async bayQueue(bayId: string, currentId: string, now: Date) {
+    const trips = await this.prisma.trip.findMany({
+      where: { bayId, id: { not: currentId }, ...scheduledToday(now) },
+      orderBy: nextOrder,
+      take: QUEUE_LENGTH,
+      select: queueTripSelect,
+    });
+    const sold = await this.prisma.booking.groupBy({
+      by: ['tripId', 'channel'],
+      where: {
+        tripId: { in: trips.map((t) => t.id) },
+        status: { in: SOLD_STATUSES },
+      },
+      _count: { _all: true },
+    });
+    const count = (tripId: string, channel: BookingChannel) =>
+      sold.find((g) => g.tripId === tripId && g.channel === channel)?._count
+        ._all ?? 0;
+
+    return trips.map(({ bus, route, seatsTotal, ...trip }) => {
+      const online = count(trip.id, BookingChannel.ONLINE);
+      const walkIn = count(trip.id, BookingChannel.WALK_IN);
+      return {
+        ...trip,
+        plate: bus.plate,
+        destination: route.destinationStation,
+        counts: { total: seatsTotal, sold: online + walkIn, online, walkIn },
+      };
+    });
   }
 
   /**
