@@ -500,6 +500,8 @@ model Booking {
   messages    OutboundMessage[]
 
   @@index([passengerId, createdAt])
+  // Reports group sales by operator and day
+  @@index([operatorId, confirmedAt])
   @@index([contactEmail])
   @@index([tripId, status])
 }
