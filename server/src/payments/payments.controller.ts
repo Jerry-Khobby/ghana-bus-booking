@@ -7,7 +7,9 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   Req,
+  Sse,
   UseGuards,
   type RawBodyRequest,
 } from '@nestjs/common';
@@ -16,6 +18,7 @@ import { Public } from '../common/auth/public.decorator.js';
 import type { Request } from 'express';
 import { HoldTokenGuard } from '../bookings/hold-token.guard.js';
 import { AppException } from '../common/errors/app.exception.js';
+import { HoldStreamQueryDto } from '../realtime/stream-query.dto.js';
 import { PayHoldDto } from './dto/pay-hold.dto.js';
 import { PaymentOwnerGuard } from './payment-owner.guard.js';
 import { PaymentsService } from './payments.service.js';
@@ -79,6 +82,20 @@ export class PaymentsController {
   ) {
     await this.paymentsService.handleWebhook(req.rawBody, signature);
     return { received: true };
+  }
+
+  /**
+   * Waiting for payment, live: `event: payment` on every change, then the
+   * stream ends once it is settled. Send the hold token as ?holdToken=.
+   */
+  @Sse('payments/:id/stream')
+  @UseGuards(PaymentOwnerGuard)
+  paymentStream(
+    @Param('id') id: string,
+    // Read by PaymentOwnerGuard; declared so validation allows it
+    @Query() _query: HoldStreamQueryDto,
+  ) {
+    return this.paymentsService.paymentStream(id);
   }
 
   /** "I have approved it": checks with the provider right away. */

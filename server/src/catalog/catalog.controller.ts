@@ -6,10 +6,14 @@ import {
   Param,
   ParseUUIDPipe,
   Query,
+  Sse,
 } from '@nestjs/common';
 import { Public } from '../common/auth/public.decorator.js';
 import { ApiHeader, ApiTags } from '@nestjs/swagger';
 import { HOLD_TOKEN_HEADER } from '../bookings/hold-token.guard.js';
+import { HoldStreamQueryDto } from '../realtime/stream-query.dto.js';
+import { pings } from '../realtime/realtime.service.js';
+import { merge } from 'rxjs';
 import { CatalogService } from './catalog.service.js';
 import { SearchTripsQueryDto } from './dto/search-trips-query.dto.js';
 import { StationsQueryDto } from './dto/stations-query.dto.js';
@@ -53,5 +57,17 @@ export class CatalogController {
     @Headers(HOLD_TOKEN_HEADER) holdToken?: string,
   ) {
     return this.catalogService.getSeatMap(id, holdToken);
+  }
+
+  /** Pick a seat, live: `event: seat` { label, status } as seats change. */
+  @Sse('trips/:id/seats/stream')
+  async seatStream(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: HoldStreamQueryDto,
+  ) {
+    return merge(
+      await this.catalogService.seatStream(id, query.holdToken),
+      pings(),
+    );
   }
 }

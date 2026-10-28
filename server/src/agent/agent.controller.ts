@@ -10,13 +10,16 @@ import {
   Query,
   Req,
   Res,
+  Sse,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import type { StaffUser } from '../common/auth/auth-user.js';
 import { CurrentUser } from '../common/auth/current-user.decorator.js';
+import { AllowQueryToken } from '../common/auth/query-token.decorator.js';
 import { Roles, RolesGuard } from '../common/auth/roles.js';
+import { ConsoleStreamQueryDto } from '../realtime/stream-query.dto.js';
 import { StaffRole } from '../generated/prisma/enums.js';
 import { AgentService } from './agent.service.js';
 import { ConsoleQueryDto, SalesQueryDto } from './dto/agent-queries.dto.js';
@@ -45,6 +48,19 @@ export class AgentController {
   @Get('console')
   console(@CurrentUser() user: StaffUser, @Query() query: ConsoleQueryDto) {
     return this.agent.console(user, query.bayId);
+  }
+
+  /**
+   * Loading console, live: `event: console` with the whole console after
+   * every change. Send the access token as ?accessToken=.
+   */
+  @Sse('console/stream')
+  @AllowQueryToken()
+  consoleStream(
+    @CurrentUser() user: StaffUser,
+    @Query() query: ConsoleStreamQueryDto,
+  ) {
+    return this.agent.consoleStream(user, query.bayId);
   }
 
   /** Passenger list for the bus. */

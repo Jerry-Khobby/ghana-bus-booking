@@ -5,11 +5,14 @@ import {
   BookingStatus,
   DepartureMode,
   OperatorStatus,
+  SeatStatus,
   TripStatus,
 } from '../generated/prisma/enums.js';
 import { BookingsService } from '../bookings/bookings.service.js';
 import { hashHoldToken } from '../bookings/hold-token.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
+import { map } from 'rxjs';
 import {
   availableSeatWhere,
   buildSeatMap,
@@ -70,6 +73,7 @@ export class CatalogService {
     private readonly prisma: PrismaService,
     private readonly trips: TripsService,
     private readonly bookings: BookingsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   listStations({ q }: StationsQueryDto) {
@@ -215,23 +219,49 @@ export class CatalogService {
     if (!trip) throw tripNotFound();
     await this.bookings.expireStaleHolds(this.prisma, id, now);
 
-    const mine = holdToken
-      ? await this.prisma.booking.findFirst({
-          where: {
-            tripId: id,
-            holdTokenHash: hashHoldToken(holdToken),
-            status: { in: [BookingStatus.HELD, BookingStatus.PENDING_PAYMENT] },
-          },
-          select: { seatLabel: true },
-        })
-      : null;
-
     return buildSeatMap(
       trip.layoutSnapshot as unknown as LayoutSnapshot,
       trip.seats,
       now,
-      mine?.seatLabel,
+      await this.mySeat(id, holdToken),
     );
+  }
+
+  /**
+   * GET /trips/:id/seats/stream: every seat change on the trip, live. The
+   * holder's own seat comes through as MINE (their hold token is checked
+   * once, when the stream opens).
+   */
+  async seatStream(id: string, holdToken?: string) {
+    const trip = await this.prisma.trip.findFirst({
+      where: { id, status: { not: TripStatus.CANCELLED } },
+      select: { id: true },
+    });
+    if (!trip) throw tripNotFound();
+    const mine = await this.mySeat(id, holdToken);
+    return this.realtime.seatEvents(id).pipe(
+      map((seat) => ({
+        type: 'seat',
+        data:
+          seat.label === mine && seat.status === SeatStatus.HELD
+            ? { ...seat, status: 'MINE' as const }
+            : seat,
+      })),
+    );
+  }
+
+  /** The seat this hold token holds on the trip, if any. */
+  private async mySeat(tripId: string, holdToken?: string) {
+    if (!holdToken) return undefined;
+    const booking = await this.prisma.booking.findFirst({
+      where: {
+        tripId,
+        holdTokenHash: hashHoldToken(holdToken),
+        status: { in: [BookingStatus.HELD, BookingStatus.PENDING_PAYMENT] },
+      },
+      select: { seatLabel: true },
+    });
+    return booking?.seatLabel;
   }
 
   /** Free seats per trip, in one query however many trips there are. */

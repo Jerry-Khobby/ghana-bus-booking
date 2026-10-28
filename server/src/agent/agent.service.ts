@@ -14,7 +14,24 @@ import {
   TripStatus,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { RealtimeService } from '../realtime/realtime.service.js';
+import {
+  pings,
+  RealtimeService,
+  type ConsoleSignal,
+} from '../realtime/realtime.service.js';
+import {
+  catchError,
+  concat,
+  concatMap,
+  debounceTime,
+  EMPTY,
+  finalize,
+  from,
+  map,
+  merge,
+  of,
+  ReplaySubject,
+} from 'rxjs';
 import { effectiveSeatStatus } from '../trips/trip-seats.js';
 import { isStatusStale, TripsService } from '../trips/trips.service.js';
 import { AgentScopeService, notFound } from './agent-scope.service.js';
@@ -170,6 +187,36 @@ export class AgentService {
       seats: seats.map(({ channel: _channel, ...seat }) => seat),
       nextTrip,
     };
+  }
+
+  /**
+   * GET /agent/console/stream?bayId=: the console now, then a fresh one after
+   * every change at the bay. Bursts (a run of sales) are folded into one
+   * redraw.
+   */
+  async consoleStream(user: StaffUser, bayId?: string) {
+    const bays = await this.scope.bays(user);
+    const bay = bayId ? bays.find((b) => b.id === bayId) : bays[0];
+    if (!bay)
+      throw notFound(
+        bays.length ? 'Bay not found' : 'No bays are assigned to you',
+      );
+
+    const signals = new ReplaySubject<ConsoleSignal>(1);
+    const listening = this.realtime.consoleSignals(bay.id).subscribe(signals);
+    const first = await this.console(user, bay.id);
+    const updates = signals.pipe(
+      debounceTime(250),
+      concatMap(() => from(this.console(user, bay.id))),
+      // The agent lost this bay: stop updating rather than fail the stream
+      catchError(() => EMPTY),
+    );
+    return merge(
+      concat(of(first), updates).pipe(
+        map((data) => ({ type: 'console', data })),
+      ),
+      pings(),
+    ).pipe(finalize(() => listening.unsubscribe()));
   }
 
   /** GET /agent/trips/:id/manifest: who should be on the bus, by seat. */

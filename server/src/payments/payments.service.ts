@@ -19,7 +19,21 @@ import {
   TripStatus,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { RealtimeService } from '../realtime/realtime.service.js';
+import {
+  pings,
+  RealtimeService,
+  SETTLED,
+  type PaymentEvent,
+} from '../realtime/realtime.service.js';
+import {
+  concat,
+  finalize,
+  map,
+  merge,
+  of,
+  ReplaySubject,
+  takeWhile,
+} from 'rxjs';
 import { MessagesService } from '../messages/messages.service.js';
 import { TicketsService } from '../tickets/tickets.service.js';
 import { availableSeatWhere } from '../trips/trip-seats.js';
@@ -276,6 +290,37 @@ export class PaymentsService {
       }
     }
     return this.describe(id);
+  }
+
+  /**
+   * GET /payments/:id/stream: the payment now, then every change, ending once
+   * it succeeds, fails or is abandoned. Live events are captured before the
+   * current state is read, so a change in between isn't lost.
+   */
+  async paymentStream(id: string) {
+    const live = new ReplaySubject<PaymentEvent>();
+    const listening = this.realtime.paymentEvents(id).subscribe(live);
+    const current = await this.realtime.paymentSnapshot(id);
+    if (!current) {
+      listening.unsubscribe();
+      throw new AppException(
+        'NOT_FOUND',
+        'Payment not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    const payment$ = concat(of(current), live).pipe(
+      map((data) => ({ type: 'payment', data }) as const),
+    );
+    return merge(payment$, pings()).pipe(
+      takeWhile(
+        (event) =>
+          event.type !== 'payment' ||
+          !SETTLED.includes((event.data as PaymentEvent).status),
+        true,
+      ),
+      finalize(() => listening.unsubscribe()),
+    );
   }
 
   /** POST /payments/:id/verify: "I have approved it". Asks the provider now. */
