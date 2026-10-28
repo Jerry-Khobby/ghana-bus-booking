@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { createObserveModule } from '@nestjs/observe';
+import { LoggerModule } from 'nestjs-pino';
+import { loggerParams } from './common/logging.js';
 import { AdminModule } from './admin/admin.module.js';
 import { AgentModule } from './agent/agent.module.js';
 import { AuditModule } from './audit/audit.module.js';
@@ -43,6 +45,7 @@ const { OBSERVE_APP_KEY, OBSERVE_APP_SECRET } = process.env;
       : []),
 
     // Infrastructure
+    LoggerModule.forRoot(loggerParams()),
     PrismaModule,
     IdempotencyModule,
     HealthModule,

@@ -448,6 +448,9 @@ export class PaymentsService {
       data?: { id?: number | string; reference?: string };
     };
     const reference = event.data?.reference;
+    this.logger.log(
+      `Webhook ${event.event} for ${reference ?? 'no reference'}`,
+    );
     const eventId = `${event.event}:${event.data?.id ?? reference}`;
 
     const { count } = await this.prisma.webhookEvent.createMany({
@@ -586,6 +589,9 @@ export class PaymentsService {
       seat: string;
     } | null;
     if (changed) {
+      this.logger.log(
+        `Payment ${changed.paymentId} (${providerRef}) settled: ${result.status}`,
+      );
       this.realtime.paymentChanged(changed.paymentId);
       this.realtime.seatsChanged(changed.tripId, [changed.seat]);
       this.realtime.tripChanged(changed.tripId);

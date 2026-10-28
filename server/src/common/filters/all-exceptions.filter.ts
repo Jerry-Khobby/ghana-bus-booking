@@ -57,11 +57,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message = 'Something went wrong. Please try again.';
     }
 
+    // Set by the request logger; ties a screenshot of this error to its logs
+    const request = ctx.getRequest<{
+      id?: string;
+      method: string;
+      path: string;
+    }>();
+    const requestId = request.id;
+
     // 4xx are the client's mistake and expected; only server errors are logged.
+    // The path only: query strings can carry tokens
     if (status >= 500) {
-      const request = ctx.getRequest<{ method: string; url: string }>();
       this.logger.error(
-        `${request.method} ${request.url} failed`,
+        `${request.method} ${request.path} failed (request ${requestId})`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
@@ -78,7 +86,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     httpAdapter.reply(
       ctx.getResponse(),
-      { error: { code, message, details } },
+      { error: { code, message, details, requestId } },
       status,
     );
   }

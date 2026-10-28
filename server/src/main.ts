@@ -5,6 +5,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import { Logger } from 'nestjs-pino';
 import { AppModule, ObserveInstrument } from './app.module.js';
 import { assertEnv } from './config/env.js';
 
@@ -16,7 +17,10 @@ async function bootstrap() {
     instrument: ObserveInstrument,
     // Keep the exact request bytes: Paystack signs the raw webhook body
     rawBody: true,
+    // Hold startup logs until pino takes over, so every line is structured
+    bufferLogs: true,
   });
+  app.useLogger(app.get(Logger));
   // Every route lives under /api/v1 (see Conventions in the backend plan).
   // The validation pipe and error filter are registered in AppModule, so
   // e2e tests get them too.

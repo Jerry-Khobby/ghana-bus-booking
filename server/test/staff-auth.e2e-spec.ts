@@ -92,7 +92,10 @@ describe('Staff auth (e2e)', () => {
       const unknown = await login(`nobody@${fx.suffix}.test`, PASSWORD).expect(
         401,
       );
-      expect(wrong.body.error).toEqual(unknown.body.error);
+      // Same answer either way (only the request id differs)
+      const { requestId: _a, ...wrongError } = wrong.body.error;
+      const { requestId: _b, ...unknownError } = unknown.body.error;
+      expect(wrongError).toEqual(unknownError);
       expect(wrong.body.error).toMatchObject({
         code: 'INVALID_CREDENTIALS',
         message: 'Email or password is wrong',

@@ -35,12 +35,15 @@ describe('Health (e2e)', () => {
   it('unknown routes return the standard error shape', () => {
     return request(app.getHttpServer())
       .get('/api/v1/does-not-exist')
+      .set('X-Request-Id', 'test-request-0001')
       .expect(404)
+      .expect('X-Request-Id', 'test-request-0001')
       .expect({
         error: {
           code: 'NOT_FOUND',
           message: 'Cannot GET /api/v1/does-not-exist',
           details: {},
+          requestId: 'test-request-0001',
         },
       });
   });
