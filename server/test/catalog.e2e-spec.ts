@@ -167,6 +167,40 @@ describe('Catalog (e2e)', () => {
     });
   });
 
+  describe('GET /trips/loading-now', () => {
+    it('lists loading buses, then the next to leave today, with destinations', async () => {
+      const soon = await fx.createTrip({
+        loadingStartsAt: minutesFromNow(15),
+        departureAt: minutesFromNow(30),
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/trips/loading-now')
+        .query({ from: ids.origin })
+        .expect(200);
+
+      expect(res.body.map((t: { id: string }) => t.id)).toEqual([
+        ids.whenFull,
+        soon.id,
+      ]);
+      expect(res.body[0]).toMatchObject({
+        status: 'LOADING',
+        seatsLeft: 4,
+        route: {
+          origin: { id: ids.origin },
+          destination: { id: ids.destination, name: 'South' },
+        },
+      });
+    });
+
+    it('rejects a station id that is not a uuid', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/trips/loading-now')
+        .query({ from: 'circle' })
+        .expect(400);
+    });
+  });
+
   describe('GET /trips/:id', () => {
     it('includes the route stations and the service fee', async () => {
       const res = await request(app.getHttpServer())

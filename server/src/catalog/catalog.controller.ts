@@ -15,6 +15,7 @@ import { HoldStreamQueryDto } from '../realtime/stream-query.dto.js';
 import { pings } from '../realtime/realtime.service.js';
 import { merge } from 'rxjs';
 import { CatalogService } from './catalog.service.js';
+import { LoadingNowQueryDto } from './dto/loading-now-query.dto.js';
 import { SearchTripsQueryDto } from './dto/search-trips-query.dto.js';
 import { StationsQueryDto } from './dto/stations-query.dto.js';
 
@@ -37,6 +38,15 @@ export class CatalogController {
   @Get('trips/search')
   searchTrips(@Query() query: SearchTripsQueryDto) {
     return this.catalogService.searchTrips(query);
+  }
+
+  /**
+   * Home: buses loading now, then the next to leave today, for every
+   * destination from the station.
+   */
+  @Get('trips/loading-now')
+  loadingNow(@Query() query: LoadingNowQueryDto) {
+    return this.catalogService.loadingNow(query);
   }
 
   /** Seat map header. */

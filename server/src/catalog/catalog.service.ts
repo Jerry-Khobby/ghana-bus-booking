@@ -19,6 +19,7 @@ import {
   type LayoutSnapshot,
 } from '../trips/trip-seats.js';
 import { isStatusStale, TripsService } from '../trips/trips.service.js';
+import { LoadingNowQueryDto } from './dto/loading-now-query.dto.js';
 import { SearchTripsQueryDto } from './dto/search-trips-query.dto.js';
 import { StationsQueryDto } from './dto/stations-query.dto.js';
 
@@ -66,6 +67,16 @@ const stationSelect = {
   city: true,
   region: true,
 } satisfies Prisma.StationSelect;
+
+const loadingNowSelect = {
+  ...tripSummarySelect,
+  route: {
+    select: {
+      originStation: { select: stationSelect },
+      destinationStation: { select: stationSelect },
+    },
+  },
+} satisfies Prisma.TripSelect;
 
 @Injectable()
 export class CatalogService {
@@ -170,6 +181,61 @@ export class CatalogService {
           tripTime(a).getTime() - tripTime(b).getTime(),
       )
       .map((trip) => toTripSummary(trip, seatsLeft.get(trip.id) ?? 0));
+  }
+
+  async loadingNow(query: LoadingNowQueryDto) {
+    const now = new Date();
+    const today = new Date(now.toISOString().slice(0, 10) + 'T00:00:00Z');
+    const rest = { gte: now, lt: new Date(today.getTime() + DAY_MS) };
+    const base: Prisma.TripWhereInput = {
+      onlineBookingOpen: true,
+      route: {
+        ...(query.from && { originStationId: query.from }),
+        active: true,
+      },
+      operator: { status: OperatorStatus.ACTIVE },
+    };
+    const where: Prisma.TripWhereInput = {
+      ...base,
+      OR: [
+        { status: TripStatus.LOADING },
+        {
+          status: TripStatus.SCHEDULED,
+          OR: [
+            { mode: DepartureMode.FIXED_TIME, departureAt: rest },
+            { mode: DepartureMode.WHEN_FULL, loadingStartsAt: rest },
+          ],
+        },
+      ],
+    };
+    const read = () =>
+      this.prisma.trip.findMany({ where, select: loadingNowSelect });
+
+    let trips = await read();
+    const stale = trips.filter((trip) => isStatusStale(trip, now));
+    if (stale.length) {
+      for (const trip of stale) await this.trips.refreshStatus(trip.id, now);
+      trips = await read();
+    }
+
+    trips = trips
+      .sort(
+        (a, b) =>
+          STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
+          tripTime(a).getTime() - tripTime(b).getTime(),
+      )
+      .slice(0, query.limit);
+    const seatsLeft = await this.countSeatsLeft(
+      trips.map((t) => t.id),
+      now,
+    );
+    return trips.map(({ route, ...trip }) => ({
+      ...toTripSummary(trip, seatsLeft.get(trip.id) ?? 0),
+      route: {
+        origin: route.originStation,
+        destination: route.destinationStation,
+      },
+    }));
   }
 
   async getTrip(id: string) {
