@@ -1,9 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { RealtimeService } from './realtime.service.js';
 
-// Server-Sent Event streams for seat maps and payment status.
+// The event bus behind the Server-Sent Event streams. Global, because seats,
+// payments and trips change all over the app and each place announces it.
 // Writes: —
-// Routes: none: catalog and payments expose the /stream routes
+// Routes: none: catalog, payments and the agent console expose /stream routes
+@Global()
 @Module({
   providers: [RealtimeService],
   exports: [RealtimeService],
