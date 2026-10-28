@@ -11,6 +11,7 @@ import {
   TripStatus,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { availableSeatWhere } from '../trips/trip-seats.js';
 import { TripsService } from '../trips/trips.service.js';
 import { CreateHoldDto } from './dto/create-hold.dto.js';
@@ -31,6 +32,7 @@ export class BookingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly trips: TripsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   /**
@@ -41,7 +43,7 @@ export class BookingsService {
   async expireStaleHolds(db: Db, tripId: string, now = new Date()) {
     const stale = await db.tripSeat.findMany({
       where: { tripId, status: SeatStatus.HELD, holdExpiresAt: { lt: now } },
-      select: { id: true, bookingId: true },
+      select: { id: true, bookingId: true, label: true },
     });
     if (!stale.length) return 0;
 
@@ -65,7 +67,13 @@ export class BookingsService {
       },
       data: { status: BookingStatus.EXPIRED },
     });
-    // TODO(phase 8): publish a seat event for each freed seat
+    // Safe to announce before the caller commits: an expired hold reads as
+    // AVAILABLE whether or not this write lands
+    this.realtime.seatsChanged(
+      tripId,
+      stale.map((s) => s.label),
+    );
+    if (count) this.realtime.tripChanged(tripId);
     return count;
   }
 
@@ -134,15 +142,23 @@ export class BookingsService {
     const farePesewas = trip.farePesewas;
     const feePesewas = trip.operator.serviceFeePesewas;
 
+    // Seats this request let go of, announced once it commits
+    const released: string[] = [];
     const booking = await this.prisma.$transaction(async (tx) => {
+      released.length = 0;
       await this.expireStaleHolds(tx, trip.id, now);
 
       // One hold per person per trip: let go of the old seat first
       if (passengerId) {
-        await this.cancelHeld(tx, { tripId: trip.id, passengerId }, now);
+        const label = await this.cancelHeld(
+          tx,
+          { tripId: trip.id, passengerId },
+          now,
+        );
+        if (label) released.push(label);
       }
       if (previousToken) {
-        await this.cancelHeld(
+        const label = await this.cancelHeld(
           tx,
           {
             tripId: trip.id,
@@ -150,6 +166,7 @@ export class BookingsService {
           },
           now,
         );
+        if (label) released.push(label);
       }
 
       const seat = await tx.tripSeat.findUnique({
@@ -215,9 +232,10 @@ export class BookingsService {
         },
         data: { status: BookingStatus.EXPIRED },
       });
-      // TODO(phase 8): publish a seat event (HELD)
       return booking;
     }, TX_OPTIONS);
+    this.realtime.seatsChanged(trip.id, [dto.seatLabel, ...released]);
+    this.realtime.tripChanged(trip.id);
 
     return {
       holdId: booking.id,
@@ -302,14 +320,15 @@ export class BookingsService {
   /** DELETE /holds/:id: "Cancel and release my seat". Only while HELD. */
   async releaseHold(id: string) {
     const now = new Date();
-    await this.prisma.$transaction(async (tx) => {
+    const freed = await this.prisma.$transaction(async (tx) => {
       const { tripId } = await tx.booking.findUniqueOrThrow({
         where: { id },
         select: { tripId: true },
       });
       await this.expireStaleHolds(tx, tripId, now);
 
-      if (await this.cancelHeld(tx, { id }, now)) return;
+      const label = await this.cancelHeld(tx, { id }, now);
+      if (label) return { tripId, label };
 
       const { status } = await tx.booking.findUniqueOrThrow({
         where: { id },
@@ -336,7 +355,8 @@ export class BookingsService {
         { status },
       );
     }, TX_OPTIONS);
-    // TODO(phase 8): publish a seat event (AVAILABLE)
+    this.realtime.seatsChanged(freed.tripId, [freed.label]);
+    this.realtime.tripChanged(freed.tripId);
   }
 
   /**
@@ -371,10 +391,9 @@ export class BookingsService {
         data: { status: TripStatus.FULL },
       });
     }
-    // TODO(phase 8): publish a console event so the agent sees "Full"
   }
 
-  /** Cancels a HELD booking and frees its seat. False if none matched. */
+  /** Cancels a HELD booking and frees its seat. Returns its label, or null. */
   private async cancelHeld(
     tx: Prisma.TransactionClient,
     where: Prisma.BookingWhereInput,
@@ -382,15 +401,15 @@ export class BookingsService {
   ) {
     const held = await tx.booking.findFirst({
       where: { ...where, status: BookingStatus.HELD },
-      select: { id: true },
+      select: { id: true, seatLabel: true },
     });
-    if (!held) return false;
+    if (!held) return null;
 
     const { count } = await tx.booking.updateMany({
       where: { id: held.id, status: BookingStatus.HELD },
       data: { status: BookingStatus.CANCELLED, cancelledAt: now },
     });
-    if (!count) return false;
+    if (!count) return null;
     await tx.tripSeat.updateMany({
       where: { bookingId: held.id },
       data: {
@@ -399,6 +418,6 @@ export class BookingsService {
         bookingId: null,
       },
     });
-    return true;
+    return held.seatLabel;
   }
 }

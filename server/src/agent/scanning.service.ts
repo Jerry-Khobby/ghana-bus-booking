@@ -9,6 +9,7 @@ import {
   TripStatus,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { parseQrPayload } from '../tickets/ticket-signing.js';
 import { TicketsService } from '../tickets/tickets.service.js';
 import { AgentScopeService } from './agent-scope.service.js';
@@ -31,6 +32,7 @@ export class ScanningService {
     private readonly prisma: PrismaService,
     private readonly scope: AgentScopeService,
     private readonly tickets: TicketsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   /**
@@ -223,7 +225,8 @@ export class ScanningService {
         result: ScanResult.BOARDED,
       },
     });
-    // TODO(phase 8): publish a console event so the boarded count updates
+    // The console's boarded count goes up
+    this.realtime.tripChanged(booking.tripId);
     return {
       code: code.toUpperCase(),
       seatLabel: booking.seatLabel,

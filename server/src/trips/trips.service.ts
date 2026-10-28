@@ -7,6 +7,7 @@ import {
   TripStatus,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 
 /** A fixed-time trip still loading this long after departureAt has left. */
 export const DEPARTURE_GRACE_MS = 30 * 60 * 1000;
@@ -36,7 +37,10 @@ export function isStatusStale(
 
 @Injectable()
 export class TripsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   /**
    * Moves a trip along its lifecycle based on the clock. Runs lazily on every
@@ -76,7 +80,10 @@ export class TripsService {
           where: { id: tripId, status: TripStatus.SCHEDULED },
           data: { status: TripStatus.LOADING },
         });
-        if (count) status = TripStatus.LOADING;
+        if (count) {
+          status = TripStatus.LOADING;
+          this.realtime.tripChanged(tripId);
+        }
       }
     }
 
@@ -89,9 +96,10 @@ export class TripsService {
       departed &&
       (status === TripStatus.LOADING || status === TripStatus.FULL)
     ) {
-      await this.prisma.$transaction((tx) =>
+      const left = await this.prisma.$transaction((tx) =>
         this.depart(tx, tripId, trip.departureAt!),
       );
+      if (left) this.realtime.tripChanged(tripId);
     }
   }
 

@@ -18,6 +18,7 @@ import {
 import { MessagesService } from '../messages/messages.service.js';
 import { PaymentsService } from '../payments/payments.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { TicketsService } from '../tickets/tickets.service.js';
 import { availableSeatWhere } from '../trips/trip-seats.js';
 import { AgentScopeService, notFound } from './agent-scope.service.js';
@@ -43,6 +44,7 @@ export class WalkInsService {
     private readonly tickets: TicketsService,
     private readonly messages: MessagesService,
     private readonly audit: AuditService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   /**
@@ -196,6 +198,8 @@ export class WalkInsService {
         : null;
       return { booking, messageId };
     }, TX_OPTIONS);
+    this.realtime.seatsChanged(trip.id, [sale.booking.seatLabel]);
+    this.realtime.tripChanged(trip.id);
 
     if (momo) {
       const payment = await this.payments.payWalkIn(
@@ -254,6 +258,7 @@ export class WalkInsService {
       status: true,
       channel: true,
       tripId: true,
+      seatLabel: true,
       trip: { select: { status: true } },
       cashEntry: { select: { settledAt: true } },
       payments: {
@@ -345,6 +350,8 @@ export class WalkInsService {
         ip,
       });
     }, TX_OPTIONS);
+    this.realtime.seatsChanged(booking.tripId, [booking.seatLabel]);
+    this.realtime.tripChanged(booking.tripId);
 
     return { code, status };
   }

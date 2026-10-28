@@ -14,6 +14,7 @@ import {
   TripStatus,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { effectiveSeatStatus } from '../trips/trip-seats.js';
 import { isStatusStale, TripsService } from '../trips/trips.service.js';
 import { AgentScopeService, notFound } from './agent-scope.service.js';
@@ -72,6 +73,7 @@ export class AgentService {
     private readonly prisma: PrismaService,
     private readonly scope: AgentScopeService,
     private readonly trips: TripsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   /** GET /agent/console?bayId= */
@@ -234,6 +236,7 @@ export class AgentService {
         HttpStatus.CONFLICT,
       );
     }
+    this.realtime.tripChanged(trip.id);
     return { id: trip.id, status: TripStatus.LOADING };
   }
 
@@ -280,7 +283,7 @@ export class AgentService {
         HttpStatus.CONFLICT,
       );
     }
-    // TODO(phase 8): publish a console event
+    this.realtime.tripChanged(tripId);
 
     // The bay is free: the next bus starts loading if its time has come
     let nextTrip = await this.prisma.trip.findFirst({

@@ -15,6 +15,7 @@ import {
 import { MessagesService } from '../messages/messages.service.js';
 import { PaymentsService } from '../payments/payments.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import {
   effectiveSeatStatus,
   seatsFromLayout,
@@ -83,6 +84,7 @@ export class AdminTripsService {
     private readonly audit: AuditService,
     private readonly trips: TripsService,
     private readonly messages: MessagesService,
+    private readonly realtime: RealtimeService,
     private readonly payments: PaymentsService,
   ) {}
 
@@ -382,6 +384,7 @@ export class AdminTripsService {
     }, TX_OPTIONS);
 
     await this.messages.send(outbox);
+    this.realtime.tripChanged(id);
     return {
       ...(await this.get(ctx, id)),
       passengersEmailed: outbox.filter(Boolean).length,
@@ -508,6 +511,7 @@ export class AdminTripsService {
     );
 
     await this.messages.send(outbox);
+    this.realtime.tripChanged(id);
     // Right after commit; the tick retries any that fail
     const refundsRequested = refunds ? await this.payments.requestRefunds() : 0;
     return {

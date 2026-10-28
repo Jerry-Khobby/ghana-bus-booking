@@ -19,6 +19,7 @@ import {
   TripStatus,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { MessagesService } from '../messages/messages.service.js';
 import { TicketsService } from '../tickets/tickets.service.js';
 import { availableSeatWhere } from '../trips/trip-seats.js';
@@ -58,6 +59,7 @@ const bookingForResult = {
   status: true,
   tripId: true,
   tripSeatId: true,
+  seatLabel: true,
   holdExpiresAt: true,
   trip: { select: { status: true } },
 } satisfies Prisma.BookingSelect;
@@ -80,6 +82,7 @@ export class PaymentsService {
     private readonly idempotency: IdempotencyService,
     private readonly tickets: TicketsService,
     private readonly messages: MessagesService,
+    private readonly realtime: RealtimeService,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
   ) {}
 
@@ -444,7 +447,11 @@ export class PaymentsService {
     const now = new Date();
     // Emails queued in the transaction, sent once it has committed
     const outbox: (string | null)[] = [];
+    // What changed, announced once it has committed
+    let touched: { paymentId: string; tripId: string; seat: string } | null =
+      null;
     await this.prisma.$transaction(async (tx) => {
+      touched = null;
       const [locked] = await tx.$queryRaw<{ id: string }[]>`
         SELECT id FROM "Payment" WHERE "providerRef" = ${providerRef} FOR UPDATE`;
       if (!locked) {
@@ -468,6 +475,11 @@ export class PaymentsService {
         return;
       }
       if (result.status === 'pending') return;
+      touched = {
+        paymentId: payment.id,
+        tripId: payment.booking.tripId,
+        seat: payment.booking.seatLabel,
+      };
 
       const raw = (result.raw ?? undefined) as Prisma.InputJsonValue;
 
@@ -523,7 +535,16 @@ export class PaymentsService {
       await this.reopenHold(tx, payment.booking, now);
     }, TX_OPTIONS);
     await this.messages.send(outbox);
-    // TODO(phase 8): publish payment and seat events
+    const changed = touched as {
+      paymentId: string;
+      tripId: string;
+      seat: string;
+    } | null;
+    if (changed) {
+      this.realtime.paymentChanged(changed.paymentId);
+      this.realtime.seatsChanged(changed.tripId, [changed.seat]);
+      this.realtime.tripChanged(changed.tripId);
+    }
   }
 
   /**
@@ -584,7 +605,7 @@ export class PaymentsService {
         where: { id: booking.id },
         data: { status: BookingStatus.REFUND_PENDING },
       });
-      // TODO(phase 8): ask Paystack for the refund (POST /refund)
+      // requestRefunds (right after a cancel, or on the tick) sends it back
       return this.messages.queueLateRefund(tx, booking.id);
     }
 
@@ -662,6 +683,7 @@ export class PaymentsService {
           },
         },
       });
+      this.realtime.paymentChanged(payment.id);
     } else {
       await this.applyResult(reference, result);
     }
