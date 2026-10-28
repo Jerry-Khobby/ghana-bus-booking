@@ -1,0 +1,57 @@
+# Render Blueprint for the Seatline API (free web service).
+# Render → New → Blueprint → pick this repo; it asks for every "sync: false"
+# value below. The database is Neon's free plan, not Render's (Render's free
+# Postgres is deleted after 30 days). Steps: server/README.md → Deploying.
+services:
+  - type: web
+    name: seatline-api
+    runtime: docker
+    plan: free
+    # Closest Render region to Ghana
+    region: frankfurt
+    rootDir: server
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    # Deploy a push to main only once GitHub's Server CI checks pass
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Neon: the pooled URL for the app, the direct one for migrations
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      # Where ticket links point, and the only browser origin CORS allows
+      - key: WEB_URL
+        sync: false
+
+      # Signing secrets: Render makes long random values. Changing one later
+      # signs everyone out (JWT, peppers) or breaks old QR codes and links.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: REFRESH_TOKEN_PEPPER
+        generateValue: true
+      - key: OTP_PEPPER
+        generateValue: true
+      - key: QR_SIGNING_SECRET
+        generateValue: true
+      - key: TICKET_LINK_SECRET
+        generateValue: true
+      # Copy this value into GitHub → Actions secrets → TICK_SECRET
+      - key: TICK_SECRET
+        generateValue: true
+
+      - key: PAYMENT_PROVIDER
+        value: paystack
+      # sk_test_ key: test mode moves no real money
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+
+      - key: MAIL_PROVIDER
+        value: gmail
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
