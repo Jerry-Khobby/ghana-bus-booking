@@ -25,5 +25,7 @@ export default defineConfig({
     // One file at a time: each boots the whole app against the same database,
     // and running them all at once runs small machines out of memory
     fileParallelism: false,
+    // Setup boots the app and writes fixtures to a real database
+    hookTimeout: 60_000,
   },
 });
