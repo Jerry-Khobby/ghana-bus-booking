@@ -1,3 +1,4 @@
+import { StrictLimit } from '../common/rate-limits.js';
 import {
   Body,
   Controller,
@@ -52,6 +53,7 @@ export class StaffAuthController {
   /** Staff sign in. */
   @Public()
   @Post('auth/login')
+  @StrictLimit()
   @HttpCode(HttpStatus.OK)
   async login(
     @Body() dto: StaffLoginDto,
@@ -67,6 +69,7 @@ export class StaffAuthController {
   /** Set password, from the invite email. */
   @Public()
   @Post('auth/accept-invite')
+  @StrictLimit()
   @HttpCode(HttpStatus.OK)
   async acceptInvite(
     @Body() dto: SetPasswordDto,
@@ -82,6 +85,7 @@ export class StaffAuthController {
   /** Set a new password, from the reset email. */
   @Public()
   @Post('auth/reset-password')
+  @StrictLimit()
   @HttpCode(HttpStatus.OK)
   async resetPassword(
     @Body() dto: SetPasswordDto,

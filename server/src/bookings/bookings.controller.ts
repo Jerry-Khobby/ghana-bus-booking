@@ -1,3 +1,4 @@
+import { StrictLimit } from '../common/rate-limits.js';
 import {
   Body,
   Controller,
@@ -28,6 +29,7 @@ export class BookingsController {
 
   /** Pick a seat → Continue. Holds the seat for the operator's hold time. */
   @Post()
+  @StrictLimit()
   @ApiHeader({
     name: 'X-Hold-Token',
     required: false,

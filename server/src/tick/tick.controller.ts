@@ -1,3 +1,4 @@
+import { NoLimit } from '../common/rate-limits.js';
 import {
   Controller,
   HttpCode,
@@ -19,6 +20,7 @@ export class TickController {
 
   /** Sweeps holds, payments, trips, unsent email and old rows. */
   @Post('tick')
+  @NoLimit()
   @HttpCode(HttpStatus.OK)
   @UseGuards(TickSecretGuard)
   @ApiHeader({ name: 'X-Tick-Secret', required: true })

@@ -1,3 +1,4 @@
+import { StrictLimit } from '../common/rate-limits.js';
 import {
   Body,
   Controller,
@@ -44,6 +45,7 @@ export class AuthController {
 
   /** Sign in, step 1: emails a 6-digit code. */
   @Post('otp/request')
+  @StrictLimit()
   @HttpCode(HttpStatus.ACCEPTED)
   requestOtp(@Body() dto: RequestOtpDto, @Req() req: Request) {
     return this.auth.requestOtp(dto.email, client(req));
@@ -51,6 +53,7 @@ export class AuthController {
 
   /** Sign in, step 2: the code from the email. Sets the refresh cookie. */
   @Post('otp/verify')
+  @StrictLimit()
   @HttpCode(HttpStatus.OK)
   async verifyOtp(
     @Body() dto: VerifyOtpDto,

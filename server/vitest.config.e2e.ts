@@ -12,6 +12,8 @@ export default defineConfig({
     // Tests never call Paystack; these win over .env (dotenv doesn't override)
     env: {
       PAYMENT_PROVIDER: 'fake',
+      // One IP fires hundreds of requests; rate-limits.e2e-spec turns them on
+      RATE_LIMITS: 'off',
       FAKE_PAYMENT_DELAY_MS: '0',
       QR_SIGNING_SECRET: 'test-qr-secret',
       TICKET_LINK_SECRET: 'test-ticket-link-secret',

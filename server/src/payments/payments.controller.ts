@@ -1,3 +1,4 @@
+import { NoLimit, StrictLimit } from '../common/rate-limits.js';
 import {
   Body,
   Controller,
@@ -74,6 +75,7 @@ export class PaymentsController {
 
   /** Paystack calls this; the signature proves it. Not for the frontend. */
   @Post('webhooks/paystack')
+  @NoLimit()
   @HttpCode(HttpStatus.OK)
   @ApiExcludeEndpoint()
   async paystackWebhook(
@@ -100,6 +102,7 @@ export class PaymentsController {
 
   /** "I have approved it": checks with the provider right away. */
   @Post('payments/:id/verify')
+  @StrictLimit()
   @HttpCode(HttpStatus.OK)
   @UseGuards(PaymentOwnerGuard)
   @ApiHeader(holdTokenHeader)

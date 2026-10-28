@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { createObserveModule } from '@nestjs/observe';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
+import { rateLimits } from './common/rate-limits.js';
 import { loggerParams } from './common/logging.js';
 import { AdminModule } from './admin/admin.module.js';
 import { AgentModule } from './agent/agent.module.js';
@@ -46,6 +48,7 @@ const { OBSERVE_APP_KEY, OBSERVE_APP_SECRET } = process.env;
 
     // Infrastructure
     LoggerModule.forRoot(loggerParams()),
+    ThrottlerModule.forRoot(rateLimits),
     PrismaModule,
     IdempotencyModule,
     HealthModule,
@@ -78,6 +81,8 @@ const { OBSERVE_APP_KEY, OBSERVE_APP_SECRET } = process.env;
     { provide: APP_PIPE, useFactory: createValidationPipe },
     // Every route needs a valid access token unless marked @Public()
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // Requests per minute per IP; tighter on sign-in, holds and verify
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}
