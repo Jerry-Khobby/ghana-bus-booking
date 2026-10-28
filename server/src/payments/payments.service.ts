@@ -379,7 +379,7 @@ export class PaymentsService {
    * The tick's refunds: for each REFUND_PENDING booking whose payment hasn't
    * been sent back yet, asks the provider to refund it and records when, so
    * it is never asked twice. Failures are retried on the next tick.
-   * TODO(phase 8): mark the booking REFUNDED from Paystack's refund webhook.
+   * Paystack's refund webhook then marks the booking REFUNDED.
    */
   async requestRefunds(): Promise<number> {
     const payments = await this.prisma.payment.findMany({
@@ -445,9 +445,17 @@ export class PaymentsService {
 
     const event = JSON.parse(rawBody.toString('utf8')) as {
       event?: string;
-      data?: { id?: number | string; reference?: string };
+      data?: {
+        id?: number | string;
+        reference?: string;
+        /** Refund events name the original charge here. */
+        transaction_reference?: string;
+      };
     };
-    const reference = event.data?.reference;
+    const refund = event.event?.startsWith('refund.') ?? false;
+    const reference = refund
+      ? event.data?.transaction_reference
+      : event.data?.reference;
     this.logger.log(
       `Webhook ${event.event} for ${reference ?? 'no reference'}`,
     );
@@ -471,7 +479,11 @@ export class PaymentsService {
         })
       : null;
     try {
-      if (payment) await this.verifyWithProvider(reference!);
+      if (payment && refund) {
+        await this.applyRefundEvent(payment.id, event.event!);
+      } else if (payment) {
+        await this.verifyWithProvider(reference!);
+      }
       await this.prisma.webhookEvent.updateMany({
         where: { provider: this.provider.name, eventId },
         data: { processedAt: new Date() },
@@ -482,6 +494,50 @@ export class PaymentsService {
         where: { provider: this.provider.name, eventId },
       });
       throw error;
+    }
+  }
+
+  /**
+   * refund.processed: the money is back with the passenger, so the booking is
+   * REFUNDED. refund.failed: forget that it was asked, so the tick asks again,
+   * and log it for someone to look at. Other refund events are progress only.
+   */
+  private async applyRefundEvent(paymentId: string, type: string) {
+    const payment = await this.prisma.payment.findUniqueOrThrow({
+      where: { id: paymentId },
+      select: { bookingId: true, providerRef: true, providerPayload: true },
+    });
+    const payload = (payment.providerPayload ?? {}) as Record<string, unknown>;
+
+    if (type === 'refund.processed') {
+      await this.prisma.$transaction([
+        this.prisma.booking.updateMany({
+          where: {
+            id: payment.bookingId,
+            status: BookingStatus.REFUND_PENDING,
+          },
+          data: { status: BookingStatus.REFUNDED },
+        }),
+        this.prisma.payment.update({
+          where: { id: paymentId },
+          data: {
+            providerPayload: {
+              ...payload,
+              refundedAt: new Date().toISOString(),
+            } as Prisma.InputJsonValue,
+          },
+        }),
+      ]);
+      this.logger.log(`Refund of ${payment.providerRef} completed`);
+    } else if (type === 'refund.failed') {
+      const { refundRequestedAt: _asked, ...rest } = payload;
+      await this.prisma.payment.update({
+        where: { id: paymentId },
+        data: { providerPayload: rest as Prisma.InputJsonValue },
+      });
+      this.logger.error(
+        `Refund of ${payment.providerRef} failed at Paystack; the tick will ask again`,
+      );
     }
   }
 

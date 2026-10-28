@@ -1,9 +1,13 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import type {
   CardCharge,
   ChargeResult,
   MomoCharge,
   PaymentProvider,
 } from './payment-provider.js';
+
+/** What tests sign fake webhooks with. */
+export const FAKE_WEBHOOK_SECRET = 'fake-webhook-secret';
 
 interface FakeCharge {
   phone?: string;
@@ -46,6 +50,21 @@ export class FakeProvider implements PaymentProvider {
       status: 'pending' as const,
       authorizationUrl: `fake://checkout/${charge.reference}`,
     };
+  }
+
+  /**
+   * Webhooks signed like Paystack's (HMAC-SHA512 of the raw body), with a
+   * test secret, so tests can send them.
+   */
+  verifyWebhook(rawBody: Buffer, signature: string | undefined): boolean {
+    if (!signature) return false;
+    const expected = createHmac('sha512', FAKE_WEBHOOK_SECRET)
+      .update(rawBody)
+      .digest('hex');
+    return (
+      expected.length === signature.length &&
+      timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
+    );
   }
 
   /** References refunded so far, for tests to inspect. */
