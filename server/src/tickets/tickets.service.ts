@@ -245,6 +245,10 @@ export class TicketsService {
         status: row.status,
         badge: badgeFor(row.status, row.trip),
         seatLabel: row.seatLabel,
+        tripId: row.tripId,
+        totalPesewas: row.totalPesewas,
+        currency: 'GHS' as const,
+        boardedAt: row.boardedAt,
         operator: row.trip.operator,
         route: {
           origin: row.trip.route.originStation,
@@ -274,6 +278,8 @@ const myTicketSelect = {
   status: true,
   tripId: true,
   seatLabel: true,
+  totalPesewas: true,
+  boardedAt: true,
   trip: {
     select: {
       status: true,

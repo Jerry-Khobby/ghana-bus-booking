@@ -259,7 +259,7 @@ describe('Passenger accounts (e2e)', () => {
 
     it('shows tickets bought as a guest once the passenger signs in', async () => {
       const email = emailFor('kwame');
-      const { code } = await buyAsGuest(email, '1');
+      const { trip, code } = await buyAsGuest(email, '1');
 
       const { accessToken } = await signIn(email);
       const auth = { Authorization: `Bearer ${accessToken}` };
@@ -270,7 +270,16 @@ describe('Passenger accounts (e2e)', () => {
         .expect(200);
       expect(upcoming.body).toMatchObject({
         items: [
-          { code, status: 'CONFIRMED', badge: 'Scheduled', seatLabel: '1' },
+          {
+            code,
+            status: 'CONFIRMED',
+            badge: 'Scheduled',
+            seatLabel: '1',
+            tripId: trip.id,
+            totalPesewas: expect.any(Number),
+            currency: 'GHS',
+            boardedAt: null,
+          },
         ],
         nextCursor: null,
       });
