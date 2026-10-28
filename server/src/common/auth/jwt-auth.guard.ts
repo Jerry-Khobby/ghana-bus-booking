@@ -10,6 +10,7 @@ import type { Request } from 'express';
 import { AppException } from '../errors/app.exception.js';
 import type { AuthUser } from './auth-user.js';
 import { IS_PUBLIC } from './public.decorator.js';
+import { ALLOW_QUERY_TOKEN } from './query-token.decorator.js';
 
 /**
  * Global guard. Reads the Bearer access token when one is sent and puts its
@@ -31,7 +32,17 @@ export class JwtAuthGuard implements CanActivate {
     ]);
     const request = context.switchToHttp().getRequest<Request>();
     const header = request.header('authorization');
-    const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+    const queryToken = this.reflector.getAllAndOverride<boolean>(
+      ALLOW_QUERY_TOKEN,
+      [context.getHandler(), context.getClass()],
+    )
+      ? request.query.accessToken
+      : undefined;
+    const token = header?.startsWith('Bearer ')
+      ? header.slice(7)
+      : typeof queryToken === 'string'
+        ? queryToken
+        : undefined;
 
     if (token) {
       try {

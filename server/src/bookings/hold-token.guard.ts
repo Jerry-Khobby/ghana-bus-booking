@@ -53,9 +53,17 @@ export function checkId(id: unknown): string {
   return id;
 }
 
-/** The X-Hold-Token, required unless a passenger is signed in. */
+/**
+ * The X-Hold-Token, required unless a passenger is signed in. SSE streams
+ * can't send headers, so on /stream routes it may come as ?holdToken=.
+ */
 export function requireOwnerProof(request: Request): string | undefined {
-  const token = request.header(HOLD_TOKEN_HEADER);
+  const fromQuery = request.path.endsWith('/stream')
+    ? request.query.holdToken
+    : undefined;
+  const token =
+    request.header(HOLD_TOKEN_HEADER) ??
+    (typeof fromQuery === 'string' ? fromQuery : undefined);
   if (!token && request.user?.typ !== 'passenger') {
     throw new AppException(
       'UNAUTHENTICATED',
