@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { useAgentConsole, type ApiConsole } from '@/api/agent'
+import { api } from '@/api/client'
 import { readStored, writeStored } from '@/lib/storage'
 import { useAuth } from './AuthContext'
 
@@ -33,6 +34,23 @@ export function StationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (bays && bayId && !bays.some((b) => b.id === bayId)) setBayId(null)
   }, [bays, bayId])
+
+  // No bay chosen yet and the first one is empty: open on one with a bus, once
+  const firstEmpty = !bayId && !!consoleQuery.data && !consoleQuery.data.trip
+  const [looked, setLooked] = useState(false)
+  useEffect(() => {
+    if (!firstEmpty || looked || !bays || bays.length < 2) return
+    setLooked(true)
+    void (async () => {
+      for (const bay of bays.slice(1)) {
+        const other = await api<ApiConsole>('/agent/console', { query: { bayId: bay.id } }).catch(() => null)
+        if (other?.trip) {
+          setBayId(bay.id)
+          return
+        }
+      }
+    })()
+  }, [firstEmpty, looked, bays])
 
   const value = useMemo<StationContextValue>(
     () => ({
