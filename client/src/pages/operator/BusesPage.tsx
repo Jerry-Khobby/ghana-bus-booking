@@ -42,6 +42,10 @@ function Buses() {
   const active = list.filter((b) => b.status === 'ACTIVE').length
 
   async function save() {
+    if (!chosenLayout) {
+      setError(layouts.isPending ? 'Still loading your seat layouts. Try again in a moment.' : 'Create a seat layout first, then add the bus.')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
