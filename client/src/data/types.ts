@@ -118,7 +118,7 @@ export interface RouteRecord {
   fare: number
 }
 
-export type AgentStatus = 'active' | 'invited'
+export type AgentStatus = 'active' | 'invited' | 'disabled'
 
 export interface StationAgent {
   id: string

@@ -170,6 +170,10 @@ interface AgentsTableProps {
   /** Agent ids whose reset link or invite was just sent. */
   sent: string[]
   onSend: (id: string) => void
+  /** Disable an active agent, or let a disabled one back in. */
+  onToggle?: (id: string) => void
+  /** Agent ids with a change being saved. */
+  busy?: string[]
 }
 
 function actionLabel(a: StationAgent, done: boolean) {
@@ -177,20 +181,35 @@ function actionLabel(a: StationAgent, done: boolean) {
   return done ? 'Reset link sent' : 'Reset password'
 }
 
-export function AgentsTable({ agents, sent, onSend }: AgentsTableProps) {
-  const status = (a: StationAgent) => <Badge tone={a.status === 'invited' ? 'warning' : 'valid'}>{a.status === 'invited' ? 'Invited' : 'Active'}</Badge>
+const STATUS = {
+  active: { tone: 'valid', label: 'Active' },
+  invited: { tone: 'warning', label: 'Invited' },
+  disabled: { tone: 'departed', label: 'Disabled' },
+} as const
+
+const actionClass =
+  'min-h-10 shrink-0 cursor-pointer rounded-[10px] border border-line-strong bg-surface px-3 text-sm font-semibold text-ink hover:border-ink disabled:cursor-default disabled:border-transparent disabled:bg-brand-tint disabled:text-brand-ink md:min-h-10'
+
+export function AgentsTable({ agents, sent, onSend, onToggle, busy = [] }: AgentsTableProps) {
+  const status = (a: StationAgent) => <Badge tone={STATUS[a.status].tone}>{STATUS[a.status].label}</Badge>
   const action = (a: StationAgent) => {
     const done = sent.includes(a.id)
+    const saving = busy.includes(a.id)
     return (
-      <button
-        type="button"
-        disabled={done}
-        onClick={() => onSend(a.id)}
-        className="min-h-10 shrink-0 cursor-pointer rounded-[10px] border border-line-strong bg-surface px-3 text-sm font-semibold text-ink hover:border-ink disabled:cursor-default disabled:border-transparent disabled:bg-brand-tint disabled:text-brand-ink md:min-h-10"
-      >
-        {actionLabel(a, done)}
-        <span className="sr-only"> for {a.name}</span>
-      </button>
+      <div className="flex shrink-0 flex-wrap justify-end gap-2">
+        {a.status !== 'disabled' && (
+          <button type="button" disabled={done || saving} onClick={() => onSend(a.id)} className={actionClass}>
+            {actionLabel(a, done)}
+            <span className="sr-only"> for {a.name}</span>
+          </button>
+        )}
+        {onToggle && a.status !== 'invited' && (
+          <button type="button" disabled={saving} onClick={() => onToggle(a.id)} className={actionClass}>
+            {a.status === 'disabled' ? 'Enable' : 'Disable'}
+            <span className="sr-only"> {a.name}</span>
+          </button>
+        )}
+      </div>
     )
   }
 
