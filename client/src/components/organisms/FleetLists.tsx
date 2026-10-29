@@ -2,8 +2,8 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { Badge, ButtonLink, TextInput } from '@/components/atoms'
 import { MiniSeatPlan } from '@/components/molecules'
-import type { Bus, LayoutRecord, RouteRecord, StationAgent } from '@/data/types'
-import { buildRows } from '@/lib/seats'
+import type { Bus, RouteRecord, StationAgent } from '@/data/types'
+import type { SeatLayout } from '@/lib/seats'
 import { ResponsiveTable, RowCard, StackedCell } from './ResponsiveTable'
 
 /* ---------- Buses ---------- */
@@ -73,17 +73,30 @@ export function BusesTable({ buses }: { buses: BusRow[] }) {
 
 /* ---------- Seat layouts ---------- */
 
-export function layoutSummary(l: LayoutRecord, busCount: number) {
-  const { total } = buildRows(l.layout)
-  const shape = `${l.layout.left} + ${l.layout.right} · ${l.layout.rows} rows${l.layout.backRow ? ' + back row' : ''} · ${total} seats`
+/** A layout as the layouts page lists it; `layout` is null for a grid drawn another way. */
+export interface LayoutRow {
+  id: string
+  name: string
+  layout: SeatLayout | null
+  seats: number
+}
+
+export function layoutSummary(l: LayoutRow, busCount: number) {
+  const shape = l.layout
+    ? `${l.layout.left} + ${l.layout.right} · ${l.layout.rows} rows${l.layout.backRow ? ' + back row' : ''} · ${l.seats} seats`
+    : `Custom plan · ${l.seats} seats`
   const used = busCount === 0 ? 'not used yet' : `used by ${busCount} bus${busCount === 1 ? '' : 'es'}`
   return `${shape} · ${used}`
 }
 
-export function LayoutCard({ layout, busCount }: { layout: LayoutRecord; busCount: number }) {
+export function LayoutCard({ layout, busCount }: { layout: LayoutRow; busCount: number }) {
   return (
     <article className="flex flex-col gap-3.5 rounded-2xl border border-line bg-surface p-4 md:p-5">
-      <MiniSeatPlan layout={layout.layout} />
+      {layout.layout ? (
+        <MiniSeatPlan layout={layout.layout} />
+      ) : (
+        <div className="flex h-24 items-center justify-center rounded-xl bg-canvas text-sm text-muted">Custom seat plan</div>
+      )}
       <div>
         <h2 className="m-0 font-display text-[19px] font-bold">{layout.name}</h2>
         <p className="m-0 mt-0.5 text-sm text-muted">{layoutSummary(layout, busCount)}</p>

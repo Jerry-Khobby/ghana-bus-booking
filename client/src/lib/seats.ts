@@ -61,3 +61,51 @@ function hash(seed: string, n: number): number {
   for (const ch of seed + n) h = Math.imul(h ^ ch.charCodeAt(0), 16777619)
   return h >>> 0
 }
+
+/* ---------- The API's layout grid ---------- */
+
+export interface LayoutCell {
+  r: number
+  c: number
+  type: 'SEAT' | 'AISLE' | 'DRIVER' | 'DOOR' | 'EMPTY'
+  label?: string
+}
+
+/**
+ * The grid the API stores for a coach shape: driver and door across the
+ * front, an aisle between the left and right seats, and an optional back
+ * row across the aisle. Seats are numbered as buildRows numbers them.
+ */
+export function toCells(layout: SeatLayout): { rows: number; cols: number; cells: LayoutCell[] } {
+  const cols = layout.left + 1 + layout.right
+  const rows = 1 + layout.rows + (layout.backRow ? 1 : 0)
+  const cells: LayoutCell[] = []
+  let label = 1
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (r === 0) cells.push({ r, c, type: c === 0 ? 'DRIVER' : c === cols - 1 ? 'DOOR' : 'EMPTY' })
+      else if (c === layout.left && r <= layout.rows) cells.push({ r, c, type: 'AISLE' })
+      else cells.push({ r, c, type: 'SEAT', label: String(label++) })
+    }
+  }
+  return { rows, cols, cells }
+}
+
+/** The coach shape a grid was made from, or null for a grid drawn some other way. */
+export function fromCells(rows: number, cols: number, cells: LayoutCell[]): SeatLayout | null {
+  const aisle = cells.find((c) => c.r === 1 && c.type === 'AISLE')
+  if (!aisle) return null
+  const backRow = !cells.some((c) => c.r === rows - 1 && c.type === 'AISLE')
+  const shape: SeatLayout = { left: aisle.c, right: cols - aisle.c - 1, rows: rows - 1 - (backRow ? 1 : 0), backRow }
+  if (shape.rows < 1 || shape.right < 0) return null
+  // Only call it that shape if drawing the shape gives back the same grid
+  const redrawn = toCells(shape)
+  const same =
+    redrawn.rows === rows &&
+    redrawn.cells.length === cells.length &&
+    redrawn.cells.every((cell) => {
+      const other = cells.find((o) => o.r === cell.r && o.c === cell.c)
+      return other?.type === cell.type && (cell.type !== 'SEAT' || other.label === cell.label)
+    })
+  return same ? shape : null
+}

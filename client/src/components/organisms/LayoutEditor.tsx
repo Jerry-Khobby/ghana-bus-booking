@@ -8,9 +8,12 @@ interface LayoutSettingsProps {
   layout: SeatLayout
   onChange: (layout: SeatLayout) => void
   onSave: () => void
+  busy?: boolean
+  /** What the server said was wrong. */
+  error?: string | null
 }
 
-export function LayoutSettings({ name, onNameChange, layout, onChange, onSave }: LayoutSettingsProps) {
+export function LayoutSettings({ name, onNameChange, layout, onChange, onSave, busy, error }: LayoutSettingsProps) {
   const { total } = buildRows(layout)
   return (
     <form
@@ -53,9 +56,15 @@ export function LayoutSettings({ name, onNameChange, layout, onChange, onSave }:
         </span>
       </div>
 
+      {error && (
+        <p role="alert" className="m-0 rounded-xl border border-danger px-4 py-3 text-sm font-semibold text-danger">
+          {error}
+        </p>
+      )}
+
       {/* On phones these live in the sticky bar (LayoutActions). */}
       <div className="hidden md:block">
-        <LayoutActions />
+        <LayoutActions busy={busy} />
       </div>
       <p className="m-0 text-sm text-muted">Saving creates a new version. Trips already on sale keep the layout they were sold with.</p>
     </form>
@@ -65,14 +74,14 @@ export function LayoutSettings({ name, onNameChange, layout, onChange, onSave }:
 export const LAYOUT_FORM_ID = 'layout-form'
 
 /** Cancel and Save; Save submits the settings form via the `form` attribute. */
-export function LayoutActions() {
+export function LayoutActions({ busy }: { busy?: boolean }) {
   return (
     <div className="grid grid-cols-2 gap-2.5">
       <ButtonLink to="/operator/layouts" variant="outline" className="min-h-[52px] md:min-h-12">
         Cancel
       </ButtonLink>
-      <Button type="submit" form={LAYOUT_FORM_ID} className="min-h-[52px] md:min-h-12">
-        Save layout
+      <Button type="submit" form={LAYOUT_FORM_ID} className="min-h-[52px] md:min-h-12" disabled={busy} aria-busy={busy}>
+        {busy ? 'Saving…' : 'Save layout'}
       </Button>
     </div>
   )
