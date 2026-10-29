@@ -3,13 +3,14 @@ import { Button, StatusMark } from '@/components/atoms'
 interface ValidScanProps {
   passenger: string
   code: string
-  seat: number
+  seat: string
   detail: string
   boarded: boolean
   onBoard: () => void
+  busy?: boolean
 }
 
-export function ValidScan({ passenger, code, seat, detail, boarded, onBoard }: ValidScanProps) {
+export function ValidScan({ passenger, code, seat, detail, boarded, onBoard, busy }: ValidScanProps) {
   return (
     <section aria-labelledby="result-h" className="overflow-hidden rounded-[18px] bg-surface text-ink">
       <div className="flex items-center gap-2.5 bg-brand px-[18px] py-3.5 text-white">
@@ -35,8 +36,8 @@ export function ValidScan({ passenger, code, seat, detail, boarded, onBoard }: V
             Boarded · scan the next ticket
           </p>
         ) : (
-          <Button size="xl" className="text-[17px]" onClick={onBoard}>
-            Mark as boarded
+          <Button size="xl" className="text-[17px]" onClick={onBoard} disabled={busy} aria-busy={busy}>
+            {busy ? 'Boarding…' : 'Mark as boarded'}
           </Button>
         )}
       </div>
