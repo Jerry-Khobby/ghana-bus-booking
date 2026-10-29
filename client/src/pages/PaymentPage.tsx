@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import type { UseQueryResult } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router'
 import { pesewasToCedis, useTrip } from '@/api/catalog'
 import { errorMessage, isApiError } from '@/api/client'
 import { useAuth } from '@/app/AuthContext'
 import { useBooking } from '@/app/BookingContext'
 import { Badge, ButtonLink, Card, Heading } from '@/components/atoms'
-import { HoldTimer } from '@/components/molecules'
+import { HoldTimer, LoadState } from '@/components/molecules'
 import {
   PayButton,
   PaymentForm,
@@ -51,13 +52,23 @@ export function NoSeatsHeld({ trip, expired }: { trip: Pick<Trip, 'id'>; expired
   )
 }
 
-/** "Loading the bus…" while a payment step fetches its trip. */
-export function LoadingTrip() {
+/**
+ * While a booking step fetches its trip: the loading state, Try again on a
+ * failed load, or "not found" when the trip really doesn't exist. Null once
+ * the trip is there.
+ */
+export function tripGate(trip: UseQueryResult<Trip>, label = 'Loading your booking…'): ReactNode | null {
+  if (trip.data) return null
+  if (trip.isError && isApiError(trip.error, 'NOT_FOUND')) return <NotFoundPage />
   return (
     <PublicTemplate>
-      <p role="status" className="py-16 text-center text-muted">
-        Loading your booking…
-      </p>
+      <LoadState
+        pending={trip.isPending || trip.isFetching}
+        error={trip.error}
+        onRetry={() => void trip.refetch()}
+        label={label}
+        className="py-16"
+      />
     </PublicTemplate>
   )
 }
@@ -111,8 +122,8 @@ export function PaymentPage() {
     if (!phone && passenger.phone) setPhone(`0${passenger.phone.replace(/^\+233/, '')}`)
   }, [passenger, email, phone, setEmail, setPhone])
 
-  if (trip.isPending) return <LoadingTrip />
-  if (!trip.data) return <NotFoundPage />
+  const gate = tripGate(trip)
+  if (gate || !trip.data) return gate
   if (!hold || secondsLeft === 0) return <NoSeatsHeld trip={trip.data} expired={secondsLeft === 0} />
 
   const t = trip.data

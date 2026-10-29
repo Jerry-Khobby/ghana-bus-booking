@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { toTrip, useStations, useTripSearch } from '@/api/catalog'
-import { errorMessage } from '@/api/client'
 import { useBooking } from '@/app/BookingContext'
+import { LoadState } from '@/components/molecules'
 import { RouteBanner, TripFilters, TripResultCard, type ShowFilter } from '@/components/organisms'
 import { isoDate } from '@/components/organisms/SearchForm'
 import { PublicTemplate } from '@/components/templates'
@@ -57,13 +57,9 @@ export function ResultsPage() {
     (t) => (show === 'all' || t.status === 'loading') && types.includes(t.busType) && ops.includes(t.operator),
   )
 
-  const status = !fromId || !toId
-    ? 'Pick where you are going on the home page.'
-    : search.isPending
-      ? 'Finding buses…'
-      : search.isError
-        ? errorMessage(search.error)
-        : null
+  const noRoute = !fromId || !toId
+  // Shown instead of the list: no route picked, the first search still out, or it failed
+  const waiting = !noRoute && !search.data && (search.isPending || search.isError)
 
   return (
     <PublicTemplate
@@ -88,10 +84,17 @@ export function ResultsPage() {
           onToggleOperator={(o) => setHiddenOps((l) => toggle(l, o))}
         />
         <section aria-label="Buses" className="flex min-w-0 flex-1 flex-col gap-3 md:gap-3.5">
-          {status ? (
+          {noRoute ? (
             <p role="status" className="m-0 rounded-[14px] border border-dashed border-line-strong p-6 text-center text-muted">
-              {status}
+              Pick where you are going on the home page.
             </p>
+          ) : waiting ? (
+            <LoadState
+              pending={search.isPending && search.fetchStatus !== 'idle'}
+              error={search.error}
+              onRetry={() => void search.refetch()}
+              label="Finding buses…"
+            />
           ) : (
             <>
               <p className="m-0 text-sm text-muted md:text-[15px]" aria-live="polite">

@@ -8,8 +8,7 @@ import { Button } from '@/components/atoms'
 import { HeldSeatsStrip, PaymentPendingCard } from '@/components/organisms'
 import { BookingTemplate } from '@/components/templates'
 import { seatList } from '@/lib/format'
-import { NotFoundPage } from './NotFoundPage'
-import { LoadingTrip, NoSeatsHeld, useHeldTrip } from './PaymentPage'
+import { NoSeatsHeld, tripGate, useHeldTrip } from './PaymentPage'
 
 function maskLocal(phone: string) {
   const d = phone.replace(/\D/g, '')
@@ -38,8 +37,8 @@ export function PayPendingPage() {
     }
   }, [status, payment.data, tripId, completePayment, refreshHold, navigate])
 
-  if (trip.isPending) return <LoadingTrip />
-  if (!trip.data) return <NotFoundPage />
+  const gate = tripGate(trip)
+  if (gate || !trip.data) return gate
   if (!hold || !booking.paymentId) return <NoSeatsHeld trip={trip.data} expired={secondsLeft === 0} />
 
   const t = trip.data

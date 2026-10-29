@@ -4,8 +4,7 @@ import { ButtonLink } from '@/components/atoms'
 import { PaymentFailedCard } from '@/components/organisms'
 import { BookingTemplate } from '@/components/templates'
 import { seatList } from '@/lib/format'
-import { NotFoundPage } from './NotFoundPage'
-import { LoadingTrip, NoSeatsHeld, useHeldTrip } from './PaymentPage'
+import { NoSeatsHeld, tripGate, useHeldTrip } from './PaymentPage'
 
 export function PayFailedPage() {
   const { tripId } = useParams()
@@ -18,8 +17,8 @@ export function PayFailedPage() {
     void refreshHold()
   }, [refreshHold])
 
-  if (trip.isPending) return <LoadingTrip />
-  if (!trip.data) return <NotFoundPage />
+  const gate = tripGate(trip)
+  if (gate || !trip.data) return gate
   if (!hold || secondsLeft === 0) return <NoSeatsHeld trip={trip.data} expired={secondsLeft === 0} />
 
   const seats = hold.seats

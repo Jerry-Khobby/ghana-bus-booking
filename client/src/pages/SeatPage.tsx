@@ -4,13 +4,13 @@ import { toSeatStatus, useSeatMap, useTrip } from '@/api/catalog'
 import { errorMessage, isApiError } from '@/api/client'
 import { useBooking } from '@/app/BookingContext'
 import { Badge, Card, Heading } from '@/components/atoms'
-import { SeatLegend } from '@/components/molecules'
+import { LoadState, SeatLegend } from '@/components/molecules'
 import { BookingSummary, MobileSeatBar, SeatMap } from '@/components/organisms'
-import { BookingTemplate, PublicTemplate } from '@/components/templates'
+import { BookingTemplate } from '@/components/templates'
 import { useCountdown } from '@/hooks/useCountdown'
 import { plural, statusLabel } from '@/lib/format'
 import { MAX_SEATS } from '@/lib/seats'
-import { NotFoundPage } from './NotFoundPage'
+import { tripGate } from './PaymentPage'
 
 export function SeatPage() {
   const { tripId } = useParams()
@@ -28,22 +28,8 @@ export function SeatPage() {
     if (secondsLeft === 0) void refreshHold()
   }, [secondsLeft, refreshHold])
 
-  if (trip.isPending || seatMap.isPending) {
-    return (
-      <PublicTemplate>
-        <p role="status" className="py-16 text-center text-muted">
-          Loading the bus…
-        </p>
-      </PublicTemplate>
-    )
-  }
-  if (isApiError(trip.error, 'NOT_FOUND') || !trip.data) {
-    return trip.isError && !isApiError(trip.error, 'NOT_FOUND') ? (
-      <NotFoundPage title="We could not load this bus" body={errorMessage(trip.error)} />
-    ) : (
-      <NotFoundPage />
-    )
-  }
+  const gate = tripGate(trip, 'Loading the bus…')
+  if (gate || !trip.data) return gate
 
   const t = trip.data
   const live = t.status === 'loading'
@@ -129,7 +115,12 @@ export function SeatPage() {
             />
           ) : (
             <Card>
-              <p className="m-0 text-muted">{errorMessage(seatMap.error)}</p>
+              <LoadState
+                pending={seatMap.isPending}
+                error={seatMap.error}
+                onRetry={() => void seatMap.refetch()}
+                label="Loading the seat map…"
+              />
             </Card>
           )}
         </div>

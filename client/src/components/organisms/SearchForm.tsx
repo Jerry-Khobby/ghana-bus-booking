@@ -69,8 +69,16 @@ export function SearchForm() {
         <FormField id="from" label="From">
           {options.length ? (
             <Dropdown id="from" labelledBy="from-label" value={from} options={options} onChange={(v) => setPicked((p) => ({ ...p, from: v }))} />
+          ) : stations.isError && !stations.isFetching ? (
+            <button
+              type="button"
+              onClick={() => void stations.refetch()}
+              className="h-[52px] cursor-pointer rounded-[10px] border border-dashed border-danger bg-surface px-3.5 text-left font-semibold text-danger"
+            >
+              Couldn't load stations · Try again
+            </button>
           ) : (
-            <TextInput id="from" disabled value={stations.isError ? 'Could not load stations' : 'Loading stations…'} readOnly />
+            <TextInput id="from" disabled value="Loading stations…" readOnly />
           )}
         </FormField>
       </div>
