@@ -1,35 +1,69 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { useOperator } from '@/app/OperatorContext'
+import { API_BUS_TYPE, BUS_TYPE_NAMES, busNext, busStatusOf, createBus, useBuses, useLayouts, useRefreshAdmin } from '@/api/admin'
+import { errorMessage, isApiError } from '@/api/client'
 import { Button, Dropdown, TextInput } from '@/components/atoms'
-import { FormField, InlineFormCard, PageHeader } from '@/components/molecules'
-import { BusesTable } from '@/components/organisms'
+import { FormField, InlineFormCard, LoadState, PageHeader } from '@/components/molecules'
+import { BusesTable, type BusRow } from '@/components/organisms'
 import { OperatorTemplate } from '@/components/templates'
 import { busTypes } from '@/data/mock'
 import type { BusType } from '@/data/types'
-import { buildRows } from '@/lib/seats'
 
 export function BusesPage() {
-  const { buses, layouts, addBus } = useOperator()
+  return (
+    <OperatorTemplate title="Buses" context="fleet">
+      <Buses />
+    </OperatorTemplate>
+  )
+}
+
+function Buses() {
+  const buses = useBuses()
+  const layouts = useLayouts()
+  const refresh = useRefreshAdmin()
   const [open, setOpen] = useState(false)
   const [plate, setPlate] = useState('')
   const [type, setType] = useState<BusType>('Air-conditioned coach')
-  const [layoutId, setLayoutId] = useState(layouts[0].id)
-  const active = buses.filter((b) => b.status === 'active').length
+  const [layoutId, setLayoutId] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  function save() {
-    addBus({ plate: plate.trim().toUpperCase(), type, layoutId, status: 'active', next: 'No trips yet' })
-    setPlate('')
-    setOpen(false)
+  const list = buses.data ?? []
+  const layoutList = layouts.data ?? []
+  const chosenLayout = layoutId ?? layoutList[0]?.id ?? ''
+  const rows: BusRow[] = list.map((b) => ({
+    id: b.id,
+    plate: b.plate,
+    type: BUS_TYPE_NAMES[b.type],
+    layoutId: b.layout.id,
+    layoutLabel: `${b.layout.name} · ${b.layout.seatCount}`,
+    status: busStatusOf(b.status),
+    next: busNext(b),
+  }))
+  const active = list.filter((b) => b.status === 'ACTIVE').length
+
+  async function save() {
+    setBusy(true)
+    setError(null)
+    try {
+      await createBus({ plate: plate.trim().toUpperCase().replace(/\s+/g, ' '), type: API_BUS_TYPE[type], layoutId: chosenLayout })
+      await refresh()
+      setPlate('')
+      setOpen(false)
+    } catch (e) {
+      setError(isApiError(e, 'VALIDATION_FAILED') && e.fields.plate ? 'Enter a plate like GR 1234-26' : errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
-    <OperatorTemplate title="Buses" context="fleet">
+    <>
       <PageHeader
         title="Buses"
         subtitle={
           <>
-            {buses.length} buses<span className="hidden lg:inline"> in the fleet</span> · {active} active
+            {list.length} buses<span className="hidden lg:inline"> in the fleet</span> · {active} active
           </>
         }
         action={
@@ -43,11 +77,16 @@ export function BusesPage() {
         <InlineFormCard
           title="Add a bus"
           label="Add bus"
-          submitLabel="Save bus"
+          submitLabel={busy ? 'Saving…' : 'Save bus'}
           onCancel={() => setOpen(false)}
-          onSubmit={save}
+          onSubmit={() => void save()}
           note={
             <>
+              {error && (
+                <span role="alert" className="mb-1 block font-semibold text-danger">
+                  {error}
+                </span>
+              )}
               Need a different seat plan?{' '}
               <Link to="/operator/layouts/new" className="font-semibold">
                 Create a new layout
@@ -75,20 +114,28 @@ export function BusesPage() {
             </FormField>
             <div className="col-span-2 md:col-span-1">
               <FormField id="bu-layout" label="Seat layout">
-                <Dropdown
-                  id="bu-layout"
-                  labelledBy="bu-layout-label"
-                  value={layoutId}
-                  options={layouts.map((l) => ({ value: l.id, label: `${l.name} · ${buildRows(l.layout).total}` }))}
-                  onChange={setLayoutId}
-                />
+                {layoutList.length ? (
+                  <Dropdown
+                    id="bu-layout"
+                    labelledBy="bu-layout-label"
+                    value={chosenLayout}
+                    options={layoutList.map((l) => ({ value: l.id, label: `${l.name} · ${l.seatCount}` }))}
+                    onChange={setLayoutId}
+                  />
+                ) : (
+                  <p className="m-0 text-sm text-muted">Create a seat layout first.</p>
+                )}
               </FormField>
             </div>
           </div>
         </InlineFormCard>
       )}
 
-      <BusesTable buses={buses} layouts={layouts} />
-    </OperatorTemplate>
+      {buses.data ? (
+        <BusesTable buses={rows} />
+      ) : (
+        <LoadState pending={buses.isPending} error={buses.error} onRetry={() => void buses.refetch()} label="Loading the fleet…" />
+      )}
+    </>
   )
 }

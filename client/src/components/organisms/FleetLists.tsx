@@ -17,18 +17,21 @@ function shortType(t: Bus['type']) {
   return t === 'Air-conditioned coach' ? 'AC coach' : t
 }
 
-export function BusesTable({ buses, layouts }: { buses: Bus[]; layouts: LayoutRecord[] }) {
-  const layoutOf = (b: Bus) => layouts.find((l) => l.id === b.layoutId)
-  const layoutText = (b: Bus) => {
-    const l = layoutOf(b)
-    return l ? `${l.name} · ${buildRows(l.layout).total}` : 'No layout'
-  }
-  const layoutLink = (b: Bus, children: ReactNode, className?: string) => (
+/** A bus as the fleet table lists it. */
+export interface BusRow extends Bus {
+  id: string
+  /** "AC coach — standard · 49" */
+  layoutLabel: string
+}
+
+export function BusesTable({ buses }: { buses: BusRow[] }) {
+  const layoutText = (b: BusRow) => b.layoutLabel
+  const layoutLink = (b: BusRow, children: ReactNode, className?: string) => (
     <Link to={`/operator/layouts/${b.layoutId}`} className={className ?? 'font-semibold'}>
       {children}
     </Link>
   )
-  const status = (b: Bus) => (
+  const status = (b: BusRow) => (
     <Badge tone={busStatus[b.status].tone}>
       {busStatus[b.status].label}
     </Badge>
@@ -38,7 +41,7 @@ export function BusesTable({ buses, layouts }: { buses: Bus[]; layouts: LayoutRe
     <ResponsiveTable
       label="Fleet"
       rows={buses}
-      rowKey={(b) => b.plate}
+      rowKey={(b) => b.id}
       minWidth={720}
       columns={[
         { header: 'Plate', cell: (b) => b.plate, className: 'font-mono font-semibold' },
