@@ -1,117 +1,275 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { useOperator } from '@/app/OperatorContext'
-import { PageHeader } from '@/components/molecules'
-import { TripForm, TripFormActions, TripPreview, isEditableTrip, type TripDraft } from '@/components/organisms'
+import {
+  BUS_TYPE_NAMES,
+  cancelTrip,
+  createTrip,
+  routeName,
+  updateTrip,
+  useAdminTrip,
+  useBays,
+  useBuses,
+  useRefreshAdmin,
+  useRoutes,
+  type ApiAdminTrip,
+  type TripBody,
+} from '@/api/admin'
+import { hhmm } from '@/api/catalog'
+import { errorMessage } from '@/api/client'
+import { useAuth } from '@/app/AuthContext'
+import { Button, Card, Heading, TextInput } from '@/components/atoms'
+import { FormField, LoadState, PageHeader } from '@/components/molecules'
+import { TripForm, TripFormActions, TripPreview, type TripDraft } from '@/components/organisms'
+import { isoDate } from '@/components/organisms/SearchForm'
 import { OperatorTemplate } from '@/components/templates'
-import { OPERATOR_NAME, bayOptions } from '@/data/operator'
-import type { BusType, OperatorTrip } from '@/data/types'
-import { buildRows } from '@/lib/seats'
+import { cedis } from '@/lib/format'
 import { NotFoundPage } from '../NotFoundPage'
 
-const shortType: Record<BusType, string> = {
-  'Air-conditioned coach': 'AC coach',
-  'Standard bus': 'Standard',
-  Minibus: 'Minibus',
-}
-
-function tomorrow() {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0, 10)
-}
+const shortType: Record<string, string> = { AC_COACH: 'AC coach', STANDARD: 'Standard', MINIBUS: 'Minibus' }
 
 function prettyDate(iso: string) {
-  return new Date(`${iso}T12:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Accra' })
 }
+
+/** Ghana is on GMT all year, so a date and time typed here are UTC. */
+const at = (date: string, time: string) => new Date(`${date}T${time}:00Z`).toISOString()
+const dayOf = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : undefined)
 
 /** New trip at /operator/trips/new; editing an open trip at /operator/trips/:tripId/edit. */
 export function TripEditorPage() {
   const { tripId } = useParams()
-  // Remount per trip so the form starts from that trip's values.
-  return <TripEditor key={tripId ?? 'new'} tripId={tripId} />
+  const title = tripId ? 'Edit trip' : 'New trip'
+  return (
+    <OperatorTemplate title={title} context="trips" mobileAction={<TripFormActions submitLabel={tripId ? 'Save changes' : 'Publish trip'} />}>
+      <TripEditorData key={tripId ?? 'new'} tripId={tripId} />
+    </OperatorTemplate>
+  )
 }
 
-function TripEditor({ tripId }: { tripId: string | undefined }) {
-  const navigate = useNavigate()
-  const { trips, buses, routes, layouts, saveTrip } = useOperator()
-  const existing = tripId ? trips.find((t) => t.id === tripId) : undefined
+/** Waits for everything the form needs. */
+function TripEditorData({ tripId }: { tripId: string | undefined }) {
+  const routes = useRoutes()
+  const buses = useBuses()
+  const bays = useBays()
+  const trip = useAdminTrip(tripId)
+  const queries = [routes, buses, bays, ...(tripId ? [trip] : [])]
+  const failed = queries.find((q) => q.isError)
 
-  const activeBuses = buses.filter((b) => b.status === 'active')
-  const seatsFor = (plate: string) => {
-    const bus = buses.find((b) => b.plate === plate)
-    const layout = layouts.find((l) => l.id === bus?.layoutId)
-    return layout ? buildRows(layout.layout).total : 49
+  if (tripId && trip.isError) return <NotFoundPage title="We could not find that trip" body={errorMessage(trip.error)} />
+  if (!routes.data || !buses.data || !bays.data || (tripId && !trip.data)) {
+    return <LoadState pending={!failed} error={failed?.error} onRetry={() => queries.forEach((q) => void q.refetch())} label="Loading the timetable…" />
   }
+  if (trip.data && !trip.data.editable) {
+    return <NotFoundPage title="This trip can no longer be edited" body="Departed, full and cancelled trips are locked. Pick an open trip from the Trips page." />
+  }
+  if (!routes.data.length || !buses.data.some((b) => b.status === 'ACTIVE')) {
+    return (
+      <Card>
+        <p className="m-0">Add a route and an active bus first: a trip needs both.</p>
+      </Card>
+    )
+  }
+  return <TripEditor existing={trip.data} routes={routes.data} buses={buses.data} bays={bays.data} />
+}
+
+function TripEditor({
+  existing,
+  routes,
+  buses,
+  bays,
+}: {
+  existing?: ApiAdminTrip
+  routes: NonNullable<ReturnType<typeof useRoutes>['data']>
+  buses: NonNullable<ReturnType<typeof useBuses>['data']>
+  bays: NonNullable<ReturnType<typeof useBays>['data']>
+}) {
+  const navigate = useNavigate()
+  const refresh = useRefreshAdmin()
+  const { staff } = useAuth()
+  const activeBuses = buses.filter((b) => b.status === 'ACTIVE' || b.id === existing?.bus?.id)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const [draft, setDraft] = useState<TripDraft>(() => {
-    const route = routes.find((r) => r.name === existing?.route) ?? routes[0]
-    const scheduled = existing ? /^\d{2}:\d{2}$/.test(existing.when) : true
+    const route = routes.find((r) => r.id === existing?.route.id) ?? routes.find((r) => r.active) ?? routes[0]
+    const fixed = existing ? existing.mode === 'FIXED_TIME' : true
     return {
       routeId: route.id,
-      busPlate: existing?.plate ?? activeBuses[1]?.plate ?? activeBuses[0].plate,
-      mode: scheduled ? 'scheduled' : 'fill',
-      date: tomorrow(),
-      time: scheduled && existing ? existing.when : '14:30',
-      startLoading: '10:00',
-      leaveBy: '13:00',
-      fare: String(existing?.fare ?? route.fare),
-      bay: existing?.bay ?? 6,
-      openOnline: true,
+      busId: existing?.bus?.id ?? activeBuses[0].id,
+      mode: fixed ? 'scheduled' : 'fill',
+      date: dayOf(existing?.departureAt ?? existing?.loadingStartsAt) ?? isoDate(1),
+      time: hhmm(existing?.departureAt) ?? '14:30',
+      startLoading: hhmm(existing?.loadingStartsAt) ?? '10:00',
+      leaveBy: hhmm(existing?.leaveBy) ?? '13:00',
+      fare: String((existing?.farePesewas ?? route.baseFarePesewas) / 100),
+      bayId: existing?.bay.id ?? '',
+      openOnline: existing?.onlineBookingOpen ?? true,
     }
   })
 
-  if (tripId && (!existing || !isEditableTrip(existing))) {
-    return <NotFoundPage title="This trip cannot be edited" body="Departed and full trips are locked. Pick an open trip from the Trips page." />
-  }
-
   const route = routes.find((r) => r.id === draft.routeId) ?? routes[0]
-  const bus = buses.find((b) => b.plate === draft.busPlate) ?? activeBuses[0]
+  // Buses board at the route's starting station
+  const stationBays = bays.filter((b) => b.station.id === route.origin.id).sort((a, b) => a.number - b.number)
+  useEffect(() => {
+    if (!stationBays.some((b) => b.id === draft.bayId) && stationBays[0]) setDraft((d) => ({ ...d, bayId: stationBays[0].id }))
+  }, [stationBays, draft.bayId])
+
+  const bus = buses.find((b) => b.id === draft.busId) ?? activeBuses[0]
+  const bay = stationBays.find((b) => b.id === draft.bayId)
   const when = draft.mode === 'scheduled' ? `Departs ${prettyDate(draft.date)}, ${draft.time}` : `Leaves when full · by ${draft.leaveBy} latest`
-  const title = existing ? 'Edit trip' : 'New trip'
   const submitLabel = existing ? 'Save changes' : 'Publish trip'
 
-  function publish() {
-    const trip: OperatorTrip = {
-      id: existing?.id ?? `${draft.busPlate.toLowerCase().replace(/\s+/g, '-')}-${Date.now().toString(36)}`,
-      route: route.name,
-      plate: draft.busPlate,
-      when: draft.mode === 'scheduled' ? draft.time : 'When full',
-      bay: draft.bay,
-      status: existing?.status ?? (draft.mode === 'scheduled' ? 'scheduled' : 'loading'),
-      sold: existing?.sold ?? 0,
-      capacity: seatsFor(draft.busPlate),
-      fare: Number(draft.fare) || route.fare,
+  async function publish() {
+    setBusy(true)
+    setError(null)
+    const body: TripBody = {
+      routeId: draft.routeId,
+      busId: draft.busId,
+      bayId: draft.bayId,
+      ...(draft.mode === 'scheduled'
+        ? { mode: 'FIXED_TIME' as const, departureAt: at(draft.date, draft.time) }
+        : { mode: 'WHEN_FULL' as const, loadingStartsAt: at(draft.date, draft.startLoading), leaveBy: at(draft.date, draft.leaveBy) }),
+      farePesewas: Math.round(Number(draft.fare) * 100),
+      onlineBookingOpen: draft.openOnline,
     }
-    saveTrip(trip)
-    navigate('/operator/trips')
+    try {
+      if (existing) await updateTrip(existing.id, body)
+      else await createTrip(body)
+      await refresh()
+      navigate('/operator/trips')
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
-    <OperatorTemplate title={title} context="trips" mobileAction={<TripFormActions submitLabel={submitLabel} />}>
-      <PageHeader back={{ to: '/operator/trips', label: 'Trips' }} title={title} subtitle={existing ? `${existing.route} · ${existing.plate}` : undefined} />
+    <>
+      <PageHeader
+        back={{ to: '/operator/trips', label: 'Trips' }}
+        title={existing ? 'Edit trip' : 'New trip'}
+        subtitle={existing ? `${routeName(existing.route)} · ${existing.bus?.plate}` : undefined}
+      />
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-6">
         <TripForm
           draft={draft}
           onChange={setDraft}
-          onSubmit={publish}
-          routes={routes}
-          buses={activeBuses.map((b) => ({ plate: b.plate, label: `${b.plate} · ${shortType[b.type]} · ${seatsFor(b.plate)} seats` }))}
-          bays={bayOptions}
+          onSubmit={() => void publish()}
+          routes={routes
+            .filter((r) => r.active || r.id === existing?.route.id)
+            .map((r) => ({ id: r.id, name: routeName(r), stations: `${r.origin.name} → ${r.destination.name}`, fare: r.baseFarePesewas / 100 }))}
+          buses={activeBuses.map((b) => ({ id: b.id, label: `${b.plate} · ${shortType[b.type]} · ${b.layout.seatCount} seats` }))}
+          bays={stationBays}
           submitLabel={submitLabel}
+          busy={busy}
+          error={error}
         />
         <TripPreview
           mode={draft.mode}
           when={when}
-          plate={draft.busPlate}
-          operator={OPERATOR_NAME}
-          busType={shortType[bus.type]}
-          route={route.name}
-          seats={seatsFor(draft.busPlate) - (existing?.sold ?? 0)}
+          plate={bus.plate}
+          operator={staff?.operator?.name ?? ''}
+          busType={shortType[bus.type] ?? BUS_TYPE_NAMES[bus.type]}
+          route={routeName(route)}
+          seats={bus.layout.seatCount - (existing?.sold ?? 0)}
           fare={Number(draft.fare)}
-          bay={draft.bay}
+          bay={bay?.number}
         />
       </div>
-    </OperatorTemplate>
+      {existing && <CancelTrip trip={existing} />}
+    </>
+  )
+}
+
+/** Takes a trip off: held seats are released, online buyers refunded, walk-ins listed for repaying. */
+function CancelTrip({ trip }: { trip: ApiAdminTrip }) {
+  const navigate = useNavigate()
+  const refresh = useRefreshAdmin()
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState<{ refunds: number; cash: { code: string; seatLabel: string; amountPesewas: number }[] } | null>(null)
+
+  async function cancel() {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = (await cancelTrip(trip.id, reason.trim())) as {
+        refundsPending: number
+        cashToRepay: { code: string; seatLabel: string; amountPesewas: number }[]
+      }
+      setDone({ refunds: res.refundsPending, cash: res.cashToRepay })
+      await refresh()
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (done) {
+    return (
+      <Card className="flex flex-col gap-3">
+        <Heading as="h2" size="sm">
+          Trip cancelled
+        </Heading>
+        <p className="m-0">
+          Every passenger has been emailed. {done.refunds} online {done.refunds === 1 ? 'payment is' : 'payments are'} being refunded.
+        </p>
+        {done.cash.length > 0 && (
+          <>
+            <p className="m-0 font-semibold">Repay these cash tickets at the station:</p>
+            <ul className="m-0 pl-5">
+              {done.cash.map((c) => (
+                <li key={c.code}>
+                  <span className="font-mono">{c.code}</span> · seat {c.seatLabel} · {cedis(c.amountPesewas / 100)}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <Button className="self-start" onClick={() => navigate('/operator/trips')}>
+          Back to trips
+        </Button>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="flex flex-col gap-3 border-danger">
+      <Heading as="h2" size="sm">
+        Cancel this trip
+      </Heading>
+      <p className="m-0 text-muted">
+        {trip.sold ? `${trip.sold} ${trip.sold === 1 ? 'ticket has' : 'tickets have'} been sold. ` : ''}Online buyers get their money back; cash
+        walk-ins are listed for you to repay. This can’t be undone.
+      </p>
+      {open ? (
+        <>
+          <FormField id="cx-reason" label="Reason (passengers see it)">
+            <TextInput id="cx-reason" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Bus broke down" />
+          </FormField>
+          {error && (
+            <p role="alert" className="m-0 text-sm font-semibold text-danger">
+              {error}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2.5">
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>
+              Keep the trip
+            </Button>
+            <Button onClick={() => void cancel()} disabled={busy || reason.trim().length < 3} aria-busy={busy}>
+              {busy ? 'Cancelling…' : 'Cancel the trip'}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <Button variant="outline" className="self-start" onClick={() => setOpen(true)}>
+          Cancel trip…
+        </Button>
+      )}
+    </Card>
   )
 }

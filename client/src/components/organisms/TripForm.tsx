@@ -9,14 +9,14 @@ export type DepartureMode = 'scheduled' | 'fill'
 
 export interface TripDraft {
   routeId: string
-  busPlate: string
+  busId: string
   mode: DepartureMode
   date: string
   time: string
   startLoading: string
   leaveBy: string
   fare: string
-  bay: number
+  bayId: string
   openOnline: boolean
 }
 
@@ -40,13 +40,17 @@ interface TripFormProps {
   onChange: (draft: TripDraft) => void
   onSubmit: () => void
   routes: Array<{ id: string; name: string; stations: string; fare: number }>
-  buses: Array<{ plate: string; label: string }>
-  bays: number[]
+  buses: Array<{ id: string; label: string }>
+  /** Bays at the route's origin station. */
+  bays: Array<{ id: string; number: number }>
   submitLabel: string
+  busy?: boolean
+  /** What the server said was wrong. */
+  error?: string | null
 }
 
 /** Route, bus, departure, fare and bay for a new or edited trip. */
-export function TripForm({ draft, onChange, onSubmit, routes, buses, bays, submitLabel }: TripFormProps) {
+export function TripForm({ draft, onChange, onSubmit, routes, buses, bays, submitLabel, busy, error }: TripFormProps) {
   const set = (patch: Partial<TripDraft>) => onChange({ ...draft, ...patch })
 
   function submit(e: FormEvent) {
@@ -74,7 +78,7 @@ export function TripForm({ draft, onChange, onSubmit, routes, buses, bays, submi
           <Dropdown id="nt-route" labelledBy="nt-route-label" value={draft.routeId} options={routes.map((r) => ({ value: r.id, label: routeLabel(r) }))} onChange={pickRoute} />
         </FormField>
         <FormField id="nt-bus" label="Bus">
-          <Dropdown id="nt-bus" labelledBy="nt-bus-label" value={draft.busPlate} options={buses.map((b) => ({ value: b.plate, label: b.label }))} onChange={(busPlate) => set({ busPlate })} />
+          <Dropdown id="nt-bus" labelledBy="nt-bus-label" value={draft.busId} options={buses.map((b) => ({ value: b.id, label: b.label }))} onChange={(busId) => set({ busId })} />
         </FormField>
       </div>
 
@@ -104,6 +108,11 @@ export function TripForm({ draft, onChange, onSubmit, routes, buses, bays, submi
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3.5">
+          <div className="col-span-2">
+            <FormField id="nt-fdate" label="Date">
+              <TextInput id="nt-fdate" type="date" required value={draft.date} onChange={(e) => set({ date: e.target.value })} />
+            </FormField>
+          </div>
           <FormField id="nt-start" label="Start loading at">
             <TextInput id="nt-start" type="time" required value={draft.startLoading} onChange={(e) => set({ startLoading: e.target.value })} />
           </FormField>
@@ -118,7 +127,11 @@ export function TripForm({ draft, onChange, onSubmit, routes, buses, bays, submi
           <TextInput id="nt-fare" inputMode="decimal" required pattern="[0-9]+(\.[0-9]{1,2})?" value={draft.fare} onChange={(e) => set({ fare: e.target.value })} />
         </FormField>
         <FormField id="nt-bay" label="Boarding bay">
-          <Dropdown id="nt-bay" labelledBy="nt-bay-label" value={String(draft.bay)} options={bays.map((b) => ({ value: String(b), label: `Bay ${b}` }))} onChange={(v) => set({ bay: Number(v) })} />
+          {bays.length ? (
+            <Dropdown id="nt-bay" labelledBy="nt-bay-label" value={draft.bayId} options={bays.map((b) => ({ value: b.id, label: `Bay ${b.number}` }))} onChange={(bayId) => set({ bayId })} />
+          ) : (
+            <p className="m-0 text-sm text-danger">No bays at this station yet. Add one on Routes and fares.</p>
+          )}
         </FormField>
       </div>
 
@@ -128,22 +141,28 @@ export function TripForm({ draft, onChange, onSubmit, routes, buses, bays, submi
         <span className="hidden lg:inline">Open for online booking as soon as it is published</span>
       </label>
 
+      {error && (
+        <p role="alert" className="m-0 rounded-xl border border-danger px-4 py-3 text-sm font-semibold text-danger">
+          {error}
+        </p>
+      )}
+
       {/* On phones these sit in the sticky bar instead. */}
       <div className="hidden md:block">
-        <TripFormActions submitLabel={submitLabel} />
+        <TripFormActions submitLabel={submitLabel} busy={busy} />
       </div>
     </form>
   )
 }
 
-export function TripFormActions({ submitLabel }: { submitLabel: string }) {
+export function TripFormActions({ submitLabel, busy }: { submitLabel: string; busy?: boolean }) {
   return (
     <div className="grid grid-cols-2 gap-3">
       <ButtonLink to="/operator/trips" variant="outline" size="lg">
         Cancel
       </ButtonLink>
-      <Button type="submit" form={TRIP_FORM_ID} size="lg">
-        {submitLabel}
+      <Button type="submit" form={TRIP_FORM_ID} size="lg" disabled={busy} aria-busy={busy}>
+        {busy ? 'Saving…' : submitLabel}
       </Button>
     </div>
   )
@@ -158,7 +177,7 @@ interface TripPreviewProps {
   route: string
   seats: number
   fare: number
-  bay: number
+  bay?: number
 }
 
 /** The results card passengers will see once the trip is published. */
@@ -168,7 +187,7 @@ export function TripPreview({ mode, when, plate, operator, busType, route, seats
       <Eyebrow>Passengers will see</Eyebrow>
       <article className="flex flex-col gap-2.5 rounded-[14px] border border-line bg-surface p-[18px]">
         <div className="flex items-center justify-between gap-2">
-          <Badge tone={mode === 'scheduled' ? 'scheduled' : 'loading'}>{mode === 'scheduled' ? 'Scheduled' : `Loading · bay ${bay}`}</Badge>
+          <Badge tone={mode === 'scheduled' ? 'scheduled' : 'loading'}>{mode === 'scheduled' ? 'Scheduled' : `Loading · bay ${bay ?? '—'}`}</Badge>
           <Mono className="text-[13px] text-muted">{plate}</Mono>
         </div>
         <h2 className="m-0 font-display text-xl font-bold">{when}</h2>
