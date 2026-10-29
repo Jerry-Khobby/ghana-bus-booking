@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { MAILER, type Mailer } from './../src/messages/mailer.js';
+import { allowedOrigins } from './../src/config/origins.js';
 import { PrismaService } from './../src/prisma/prisma.service.js';
 import {
   createFixture,
@@ -182,6 +183,28 @@ describe('Passenger accounts (e2e)', () => {
         .post('/api/v1/auth/refresh')
         .set('Cookie', cookie)
         .expect(401);
+    });
+
+    it("lets only the web app's own pages use the cookie", async () => {
+      const { cookie } = await signIn(emailFor('efua'));
+      const elsewhere = await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', cookie)
+        .set('Origin', 'https://evil.example')
+        .expect(403);
+      expect(elsewhere.body.error.code).toBe('FORBIDDEN');
+      await http()
+        .post('/api/v1/auth/logout')
+        .set('Cookie', cookie)
+        .set('Origin', 'https://evil.example')
+        .expect(403);
+
+      // Still signed in: the web app itself refreshes fine
+      await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', cookie)
+        .set('Origin', allowedOrigins()[0])
+        .expect(200);
     });
 
     it('refuses a refresh with no cookie', async () => {

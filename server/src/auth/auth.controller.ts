@@ -22,6 +22,7 @@ import { RequestOtpDto } from './dto/request-otp.dto.js';
 import { UpdateMeDto } from './dto/update-me.dto.js';
 import { VerifyOtpDto } from './dto/verify-otp.dto.js';
 import {
+  assertCookieOrigin,
   clearRefreshCookie,
   readRefreshCookie,
   setRefreshCookie,
@@ -76,6 +77,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    assertCookieOrigin(req);
     try {
       const session = await this.tokens.refresh(
         readRefreshCookie(req),
@@ -93,6 +95,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    assertCookieOrigin(req);
     await this.tokens.logout(readRefreshCookie(req));
     clearRefreshCookie(res);
   }

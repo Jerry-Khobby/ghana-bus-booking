@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule, ObserveInstrument } from './app.module.js';
 import { assertEnv } from './config/env.js';
+import { allowedOrigins, trustedProxies } from './config/origins.js';
 
 async function bootstrap() {
   // A missing secret or key stops the boot here, with the full list
@@ -30,7 +31,8 @@ async function bootstrap() {
 
   // Render (and most hosts) put one proxy in front: trust it for the real IP,
   // which rate limits and OTP limits count by
-  if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
+  const proxies = trustedProxies();
+  if (proxies) app.set('trust proxy', proxies);
 
   app.use(
     helmet({
@@ -60,17 +62,6 @@ async function bootstrap() {
   );
 
   await app.listen(process.env.PORT ?? 3000);
-}
-
-/** WEB_URL, plus any extra origins in CORS_ORIGINS (comma-separated). */
-function allowedOrigins(): string[] {
-  const origins = [
-    process.env.WEB_URL,
-    ...(process.env.CORS_ORIGINS ?? '').split(','),
-  ]
-    .map((o) => o?.trim().replace(/\/$/, ''))
-    .filter((o): o is string => !!o);
-  return origins.length ? origins : ['http://localhost:5173'];
 }
 
 await bootstrap();
