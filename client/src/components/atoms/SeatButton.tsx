@@ -16,26 +16,27 @@ const words: Record<SeatStatus, string> = {
 }
 
 interface SeatButtonProps {
-  number: number
+  /** The seat's label, e.g. "14". */
+  label: string
   status: SeatStatus
-  onPick?: (n: number) => void
+  onPick?: (label: string) => void
 }
 
-export function SeatButton({ number, status, onPick }: SeatButtonProps) {
+export function SeatButton({ label, status, onPick }: SeatButtonProps) {
   const selectable = status === 'free' || status === 'mine'
   return (
     <button
       type="button"
       disabled={!selectable}
       aria-pressed={status === 'mine'}
-      aria-label={`Seat ${number}, ${words[status]}`}
-      onClick={() => selectable && onPick?.(number)}
+      aria-label={`Seat ${label}, ${words[status]}`}
+      onClick={() => selectable && onPick?.(label)}
       className={cx(
         'size-10 rounded-t-[10px] rounded-b-md font-mono text-sm font-semibold transition-colors sm:size-11',
         styles[status],
       )}
     >
-      {number}
+      {label}
     </button>
   )
 }

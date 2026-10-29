@@ -1,14 +1,14 @@
 import { Link } from 'react-router'
 import { Mono, ProgressBar } from '@/components/atoms'
 import type { Trip } from '@/data/types'
-import { percentSold, seatsLeftLabel } from '@/lib/format'
+import { percentSold, seatsLeftLabel, timeLabel } from '@/lib/format'
 import { TripStatusBadge } from './TripStatusBadge'
 import { SeatFill } from './SeatFill'
 
 /** Card for the home page "Loading now" row: compact on phones and tablets, fuller on desktop. */
 export function TripCard({ trip }: { trip: Trip }) {
   const loading = trip.status === 'loading'
-  const badge = loading ? `Loading · bay ${trip.bay}` : `Scheduled · ${trip.departsAt}`
+  const badge = loading ? `Loading · bay ${trip.bay}` : `Scheduled · ${timeLabel(trip)}`
   return (
     <Link
       to={`/trips/${trip.id}/seat`}
@@ -27,12 +27,12 @@ export function TripCard({ trip }: { trip: Trip }) {
         <ProgressBar value={percentSold(trip)} size="sm" className="md:h-2.5" />
         <span className="text-sm text-muted">
           <strong className="text-ink">{seatsLeftLabel(trip.seatsLeft)}</strong>
-          {loading ? ' · leaves when full' : ` of ${trip.capacity}`}
+          {loading && trip.whenFull ? ' · leaves when full' : ` of ${trip.capacity}`}
         </span>
       </div>
 
       <div className="hidden lg:block">
-        <SeatFill capacity={trip.capacity} seatsLeft={trip.seatsLeft} note={loading ? 'Leaves when full' : `Departs ${trip.departsAt}`} />
+        <SeatFill capacity={trip.capacity} seatsLeft={trip.seatsLeft} note={trip.whenFull ? 'Leaves when full' : `Departs ${trip.departsAt}`} />
       </div>
     </Link>
   )

@@ -17,16 +17,24 @@ export interface Trip {
   operator: string
   busType: BusType
   status: TripStatus
-  /** Bay the bus is loading at, if any. */
+  /** Bay the bus loads at. */
   bay?: number
-  /** "HH:MM" for scheduled departures; undefined means it leaves when full. */
+  /** Fill-and-go: leaves once every seat is sold (or at leaveBy). */
+  whenFull?: boolean
+  /** "HH:MM" for fixed departures; undefined means it leaves when full. */
   departsAt?: string
+  /** "HH:MM" when boarding starts. */
+  loadsAt?: string
+  /** "HH:MM" a fill-and-go bus leaves by, even if not full. */
+  leaveBy?: string
   /** Human estimate for fill-and-go buses, e.g. "about 20 min". */
   eta?: string
   capacity: number
   seatsLeft: number
   /** Fare in Ghana cedis. */
   fare: number
+  /** The operator's service fee per online seat, in cedis, when known. */
+  fee?: number
 }
 
 export type PaymentMethod = 'momo' | 'card'
@@ -61,7 +69,7 @@ export interface PassengerTicket {
   tripId?: string
   route: string
   when: string
-  seat: number
+  seat: string
   plate: string
   paid: number
   state: TicketState

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
+import { useStations, type ApiStation } from '@/api/catalog'
 import { useBooking } from '@/app/BookingContext'
 import { Button, Dropdown, Icon, TextInput, type DropdownOption } from '@/components/atoms'
 import { FormField } from '@/components/molecules'
@@ -19,24 +20,41 @@ const paxOptions: DropdownOption<string>[] = Array.from({ length: MAX_SEATS }, (
   short: String(i + 1),
 }))
 
-function isoDate(offsetDays: number) {
-  const d = new Date()
-  d.setDate(d.getDate() + offsetDays)
-  return d.toISOString().slice(0, 10)
+/** YYYY-MM-DD, offset days from today. Ghana is on GMT, so the UTC day is the local day. */
+export function isoDate(offsetDays: number) {
+  return new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10)
+}
+
+export const stationName = (s: Pick<ApiStation, 'city' | 'name'>) => `${s.city} — ${s.name}`
+
+/** The busiest route, when the stations exist; else the first two. */
+function defaultRoute(stations: ApiStation[]) {
+  const find = (city: string) => stations.find((s) => s.city === city)
+  const from = find('Accra') ?? stations[0]
+  const to = find('Kumasi') ?? stations.find((s) => s.id !== from?.id)
+  return { from: from?.id ?? '', to: to?.id ?? '' }
 }
 
 export function SearchForm() {
   const navigate = useNavigate()
   const { passengers, setPassengers } = useBooking()
-  const [from, setFrom] = useState('Accra — Circle')
-  const [to, setTo] = useState('Kumasi — Asafo')
+  const stations = useStations()
+  const [picked, setPicked] = useState<{ from?: string; to?: string }>({})
   const [when, setWhen] = useState<When>('today')
   const [date, setDate] = useState(isoDate(2))
 
+  const list = stations.data ?? []
+  const fallback = defaultRoute(list)
+  const from = picked.from ?? fallback.from
+  const to = picked.to ?? fallback.to
+  const options: DropdownOption<string>[] = list.map((s) => ({ value: s.id, label: stationName(s), short: s.city }))
+  const same = !!from && from === to
+
   function submit(e: FormEvent) {
     e.preventDefault()
-    const params = new URLSearchParams({ from, to, when, pax: String(passengers) })
-    if (when === 'pick') params.set('date', date)
+    if (!from || !to || same) return
+    const day = when === 'today' ? isoDate(0) : when === 'tomorrow' ? isoDate(1) : date
+    const params = new URLSearchParams({ from, to, date: day, pax: String(passengers) })
     navigate(`/trips?${params}`)
   }
 
@@ -49,12 +67,20 @@ export function SearchForm() {
       {/* Phones: From and To full width, When and Passengers side by side. */}
       <div className="col-span-2 sm:col-span-1">
         <FormField id="from" label="From">
-          <TextInput id="from" value={from} onChange={(e) => setFrom(e.target.value)} />
+          {options.length ? (
+            <Dropdown id="from" labelledBy="from-label" value={from} options={options} onChange={(v) => setPicked((p) => ({ ...p, from: v }))} />
+          ) : (
+            <TextInput id="from" disabled value={stations.isError ? 'Could not load stations' : 'Loading stations…'} readOnly />
+          )}
         </FormField>
       </div>
       <div className="col-span-2 sm:col-span-1">
-        <FormField id="to" label="To">
-          <TextInput id="to" value={to} onChange={(e) => setTo(e.target.value)} />
+        <FormField id="to" label="To" error={same ? 'Pick a different station' : undefined}>
+          {options.length ? (
+            <Dropdown id="to" labelledBy="to-label" value={to} options={options} onChange={(v) => setPicked((p) => ({ ...p, to: v }))} />
+          ) : (
+            <TextInput id="to" disabled value="" readOnly />
+          )}
         </FormField>
       </div>
       <FormField id="when" label="When">
@@ -76,7 +102,12 @@ export function SearchForm() {
           </FormField>
         </div>
       )}
-      <Button type="submit" className="col-span-2 min-h-[52px] rounded-[10px] lg:col-span-1 lg:min-h-12 lg:min-w-[190px]" icon={<Icon name="search" size={18} />}>
+      <Button
+        type="submit"
+        disabled={!from || !to || same}
+        className="col-span-2 min-h-[52px] rounded-[10px] lg:col-span-1 lg:min-h-12 lg:min-w-[190px]"
+        icon={<Icon name="search" size={18} />}
+      >
         Find buses
       </Button>
     </form>
