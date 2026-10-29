@@ -86,7 +86,16 @@ const reasons = [
 ]
 
 /** Red-headed card explaining a failed payment; the seats stay held while the timer runs. */
-export function PaymentFailedCard({ seatsLabel, secondsLeft }: { seatsLabel: string; secondsLeft: number | null }) {
+export function PaymentFailedCard({
+  seatsLabel,
+  secondsLeft,
+  reason,
+}: {
+  seatsLabel: string
+  secondsLeft: number | null
+  /** What the provider said went wrong, e.g. "Not enough money in the wallet". */
+  reason?: string
+}) {
   return (
     <section aria-labelledby="pf-h" className="overflow-hidden rounded-[18px] border border-line bg-surface md:rounded-[20px]">
       <div className="flex items-center gap-3 bg-danger px-4 py-4 text-white md:px-7 md:py-[18px]">
@@ -97,7 +106,7 @@ export function PaymentFailedCard({ seatsLabel, secondsLeft }: { seatsLabel: str
       </div>
       <div className="flex flex-col gap-4 p-4 md:px-7 md:py-6">
         <p className="m-0 md:text-[17px]">
-          <strong>The prompt expired before it was approved.</strong> You have not been charged.
+          <strong>{reason ?? 'The payment was not approved.'}</strong> You have not been charged.
         </p>
         {secondsLeft !== null && secondsLeft > 0 && (
           <div className="flex flex-wrap justify-between gap-2 rounded-xl bg-ink px-4 py-3.5 text-white">

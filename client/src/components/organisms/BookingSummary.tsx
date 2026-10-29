@@ -5,7 +5,7 @@ import { cedis, departureLabel, mmss, plural, seatList } from '@/lib/format'
 
 interface BookingSummaryProps {
   trip: Trip
-  seats: number[]
+  seats: string[]
   /** How many seats the passenger said they need on the search form. */
   passengers: number
   secondsLeft: number | null

@@ -1,23 +1,22 @@
 import { Card, Divider, Icon } from '@/components/atoms'
 import { HoldTimer, InfoNote } from '@/components/molecules'
 import type { Trip } from '@/data/types'
-import { cedis, mmss, seatList } from '@/lib/format'
-import { seatPosition } from '@/lib/seats'
+import { bySeat, cedis, mmss, seatList } from '@/lib/format'
 
 interface PaymentSummaryProps {
   trip: Trip
-  seats: number[]
+  seats: string[]
   /** Service fee per seat. */
   fee: number
   secondsLeft: number | null
 }
 
-export function paymentTotal(trip: Trip, seats: number[], fee: number) {
+export function paymentTotal(trip: Trip, seats: string[], fee: number) {
   return (trip.fare + fee) * seats.length
 }
 
-function sorted(seats: number[]) {
-  return [...seats].sort((a, b) => a - b)
+function sorted(seats: string[]) {
+  return [...seats].sort(bySeat)
 }
 
 /** Fare and fee lines shared by every summary variant. */
@@ -54,7 +53,7 @@ export function PaymentSummary({ trip, seats, fee, secondsLeft }: PaymentSummary
             <div key={s} className="contents">
               <dt className="text-on-dark">{i === 0 ? (seats.length > 1 ? 'Seats' : 'Seat') : ''}</dt>
               <dd className="m-0 text-right font-mono font-semibold">
-                {s} · {seatPosition(s)}
+                {s}
               </dd>
             </div>
           ))}
@@ -128,7 +127,6 @@ export function PaymentSummaryDisclosure({ trip, seats, fee }: Omit<PaymentSumma
         <dt className="text-muted">{seats.length > 1 ? 'Seats' : 'Seat'}</dt>
         <dd className="m-0 text-right font-mono">
           {sorted(seats)
-            .map((s) => `${s} · ${seatPosition(s)}`)
             .join(', ')}
         </dd>
         <PriceLines trip={trip} seats={seats} fee={fee} tone="light" />

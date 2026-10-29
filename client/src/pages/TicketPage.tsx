@@ -1,49 +1,69 @@
-import { useParams } from 'react-router'
-import { useAuth } from '@/app/AuthContext'
+import { useQueries } from '@tanstack/react-query'
+import { useParams, useSearchParams } from 'react-router'
+import { getTicket } from '@/api/booking'
+import { errorMessage, isApiError } from '@/api/client'
 import { useBooking } from '@/app/BookingContext'
 import { Button, ButtonLink, StatusMark } from '@/components/atoms'
 import { TicketCard } from '@/components/organisms'
 import { PassTemplate } from '@/components/templates'
-import { findTrip, trips } from '@/data/mock'
-import { passengerTickets } from '@/data/tickets'
-import type { Ticket } from '@/data/types'
 import { plural } from '@/lib/format'
 import { NotFoundPage } from './NotFoundPage'
 
-/** Shown when the page is opened directly, before any booking in this session. */
-const sampleTicket: Ticket = { code: 'SL-7Q4K-2M', tripId: 'gr-4471-24', seat: 14, passengerName: 'Ama K.', phone: '0240000000' }
-
-function maskPhone(phone: string) {
-  const digits = phone.replace(/\D/g, '')
-  if (digits.length < 7) return 'your phone'
-  return `${digits.slice(0, 3)} *** ${digits.slice(-4)}`
+function maskEmail(email: string) {
+  const [user, domain] = email.split('@')
+  if (!domain) return 'your email'
+  return `${user.slice(0, 2)}${'*'.repeat(Math.max(1, user.length - 2))}@${domain}`
 }
 
-/** One ticket by code: from this session first, then the account's history. */
-function lookup(code: string, history: Ticket[], phone: string): Ticket | null {
-  const booked = history.find((t) => t.code === code)
-  if (booked) return booked
-  const past = passengerTickets.find((t) => t.code === code && t.tripId)
-  return past ? { code: past.code, tripId: past.tripId!, seat: past.seat, passengerName: 'Ama K.', phone } : null
-}
-
+/**
+ * /ticket: the tickets just paid for. /ticket/:code: one ticket, opened from
+ * the email (?t=), from My tickets (signed in), or on the device that bought
+ * it (its saved link token).
+ */
 export function TicketPage() {
   const { code } = useParams()
-  const { tickets: latest, history } = useBooking()
-  const { passenger } = useAuth()
+  const [params] = useSearchParams()
+  const { tickets: latest, history, email } = useBooking()
 
-  let tickets: Ticket[]
-  if (code) {
-    const found = lookup(code, history, passenger ? `0${passenger.phone}` : '')
-    if (!found) return <NotFoundPage title="We could not find that ticket" body="Check the code in your SMS, or open it from My tickets." />
-    tickets = [found]
-  } else {
-    tickets = latest.length ? latest : [sampleTicket]
+  const wanted = code
+    ? [{ code, t: params.get('t') ?? history.find((h) => h.code === code)?.ticketToken ?? null }]
+    : latest.map((t) => ({ code: t.code, t: t.ticketToken }))
+
+  const results = useQueries({
+    queries: wanted.map((w) => ({
+      queryKey: ['tickets', w.code, w.t] as const,
+      queryFn: () => getTicket(w.code, { t: w.t }),
+      // The status moves (boarded, not used); keep it current while open
+      refetchInterval: 60_000,
+    })),
+  })
+
+  if (!wanted.length) {
+    return <NotFoundPage title="No ticket to show" body="Your tickets are in your email, and in My tickets once you sign in." />
+  }
+  if (results.some((r) => r.isPending)) {
+    return (
+      <PassTemplate tone="brand">
+        <p role="status" className="m-0 py-16 text-center text-white">
+          Loading your ticket…
+        </p>
+      </PassTemplate>
+    )
+  }
+  const failed = results.find((r) => r.isError)
+  if (failed) {
+    const expired = isApiError(failed.error, 'TOKEN_INVALID')
+    return (
+      <NotFoundPage
+        title={expired ? 'This ticket link no longer works' : 'We could not find that ticket'}
+        body={expired ? errorMessage(failed.error) : 'Check the link in your email, or open it from My tickets after signing in.'}
+      />
+    )
   }
 
-  const trip = findTrip(tickets[0].tripId) ?? trips[0]
+  const tickets = results.map((r) => r.data!)
   const many = tickets.length > 1
-  // Opened from My tickets: the passenger already knows they are booked.
+  // Opened from a link or My tickets: the passenger already knows they are booked.
   const fromList = Boolean(code)
 
   return (
@@ -55,7 +75,8 @@ export function TicketPage() {
             {fromList ? 'Your ticket' : many ? `You're booked · ${plural(tickets.length, 'seat')}` : "You're booked"}
           </h1>
           <p className="m-0 text-sm text-on-brand">
-            {many ? 'One ticket per passenger. ' : ''}Also sent by SMS to {maskPhone(tickets[0].phone)}
+            {many ? 'One ticket per passenger. ' : ''}
+            {fromList || !email ? 'Also in your email.' : `Also sent to ${maskEmail(email)}.`}
           </p>
         </div>
       </div>
@@ -67,7 +88,7 @@ export function TicketPage() {
       )}
 
       {tickets.map((t, i) => (
-        <TicketCard key={t.code} ticket={t} trip={trip} position={{ index: i, total: tickets.length }} />
+        <TicketCard key={t.code} ticket={t} position={{ index: i, total: tickets.length }} />
       ))}
 
       <div className="grid grid-cols-2 gap-2.5 print:hidden">

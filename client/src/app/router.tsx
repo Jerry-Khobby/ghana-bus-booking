@@ -6,6 +6,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage'
 import { PayFailedPage } from '@/pages/PayFailedPage'
 import { PayPendingPage } from '@/pages/PayPendingPage'
 import { PaymentPage } from '@/pages/PaymentPage'
+import { PaymentReturnPage } from '@/pages/PaymentReturnPage'
 import { ResultsPage } from '@/pages/ResultsPage'
 import { SeatPage } from '@/pages/SeatPage'
 import { SignInPage } from '@/pages/SignInPage'
@@ -47,6 +48,7 @@ export const routes: RouteObject[] = [
       { path: '/trips/:tripId/pay', element: <PaymentPage /> },
       { path: '/trips/:tripId/pay/pending', element: <PayPendingPage /> },
       { path: '/trips/:tripId/pay/failed', element: <PayFailedPage /> },
+      { path: '/payment/return', element: <PaymentReturnPage /> },
       { path: '/ticket', element: <TicketPage /> },
       { path: '/ticket/:code', element: <TicketPage /> },
       { path: '/tickets', element: <MyTicketsPage /> },

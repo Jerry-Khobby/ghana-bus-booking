@@ -1,43 +1,73 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
+import { toSeatStatus, useSeatMap, useTrip } from '@/api/catalog'
+import { errorMessage, isApiError } from '@/api/client'
 import { useBooking } from '@/app/BookingContext'
-import { Badge, Heading } from '@/components/atoms'
+import { Badge, Card, Heading } from '@/components/atoms'
 import { SeatLegend } from '@/components/molecules'
 import { BookingSummary, MobileSeatBar, SeatMap } from '@/components/organisms'
-import { BookingTemplate } from '@/components/templates'
-import { findTrip } from '@/data/mock'
+import { BookingTemplate, PublicTemplate } from '@/components/templates'
 import { useCountdown } from '@/hooks/useCountdown'
 import { plural, statusLabel } from '@/lib/format'
-import { MAX_SEATS, seatStatuses } from '@/lib/seats'
+import { MAX_SEATS } from '@/lib/seats'
 import { NotFoundPage } from './NotFoundPage'
 
 export function SeatPage() {
   const { tripId } = useParams()
-  const trip = findTrip(tripId)
+  const trip = useTrip(tripId)
+  const seatMap = useSeatMap(tripId)
   const booking = useBooking()
-  const statuses = useMemo(() => (trip ? seatStatuses(trip) : new Map()), [trip])
-  const [limitHit, setLimitHit] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
 
-  const selected = booking.tripId === trip?.id ? booking.seats : []
+  const selected = booking.tripId === tripId ? booking.seats : []
   const secondsLeft = useCountdown(selected.length ? booking.holdExpiresAt : null)
-  const { releaseSeats } = booking
+  const { refreshHold } = booking
 
-  // The hold has run out: give the seats back.
+  // The hold has run out: the server let the seats go; catch up with it.
   useEffect(() => {
-    if (secondsLeft === 0) releaseSeats()
-  }, [secondsLeft, releaseSeats])
+    if (secondsLeft === 0) void refreshHold()
+  }, [secondsLeft, refreshHold])
 
-  if (!trip) return <NotFoundPage />
-
-  const live = trip.status === 'loading'
-  const passengers = booking.passengers
-
-  function pick(seat: number) {
-    if (!trip) return
-    setLimitHit(booking.toggleSeat(trip.id, seat) === 'limit')
+  if (trip.isPending || seatMap.isPending) {
+    return (
+      <PublicTemplate>
+        <p role="status" className="py-16 text-center text-muted">
+          Loading the bus…
+        </p>
+      </PublicTemplate>
+    )
+  }
+  if (isApiError(trip.error, 'NOT_FOUND') || !trip.data) {
+    return trip.isError && !isApiError(trip.error, 'NOT_FOUND') ? (
+      <NotFoundPage title="We could not load this bus" body={errorMessage(trip.error)} />
+    ) : (
+      <NotFoundPage />
+    )
   }
 
-  const summaryProps = { trip, seats: selected, passengers, secondsLeft }
+  const t = trip.data
+  const live = t.status === 'loading'
+  const bookable = t.status === 'loading' || t.status === 'scheduled'
+  const passengers = booking.passengers
+  const paying = !!booking.paymentId
+
+  async function pick(seat: string) {
+    if (!tripId) return
+    setProblem(null)
+    try {
+      const result = await booking.toggleSeat(tripId, seat)
+      if (result === 'limit') setProblem(`You can hold up to ${plural(MAX_SEATS, 'seat')} in one booking. Tap one of your seats to swap it.`)
+    } catch (error) {
+      setProblem(
+        isApiError(error, 'PAYMENT_IN_PROGRESS')
+          ? 'A payment is in progress for your seats. Finish or cancel it first.'
+          : errorMessage(error),
+      )
+    }
+  }
+
+  const map = seatMap.data
+  const summaryProps = { trip: t, seats: selected, passengers, secondsLeft }
 
   return (
     <BookingTemplate
@@ -48,36 +78,60 @@ export function SeatPage() {
           <Heading as="h1" size="xl">
             {passengers > 1 ? `Pick ${passengers} seats` : 'Pick your seat'}
           </Heading>
-          <Badge tone={trip.status} dot={live}>
-            {statusLabel(trip)}
+          <Badge tone={t.status} dot={live}>
+            {statusLabel(t)}
             {live ? ' · live' : ''}
           </Badge>
         </>
       }
       mobile={{
         title: passengers > 1 ? `Pick ${passengers} seats` : 'Pick your seat',
-        subtitle: `${trip.from.city} → ${trip.to.city} · ${trip.plate}`,
+        subtitle: `${t.from.city} → ${t.to.city} · ${t.plate}`,
         trailing: live ? (
           <Badge tone="loading" size="sm">
             Live
           </Badge>
         ) : undefined,
       }}
-      mobileBar={<MobileSeatBar {...summaryProps} />}
+      mobileBar={bookable ? <MobileSeatBar {...summaryProps} /> : undefined}
     >
       <div className="mb-3.5 md:hidden">
         <SeatLegend compact />
       </div>
 
-      {limitHit && (
+      {!bookable && (
+        <Card className="mb-4">
+          <p className="m-0 font-semibold">This bus can no longer be booked online.</p>
+        </Card>
+      )}
+
+      {problem && (
         <p role="alert" className="m-0 mb-4 rounded-xl border border-dashed border-held-line bg-held px-4 py-3 text-sm font-semibold text-held-ink">
-          You can hold up to {plural(MAX_SEATS, 'seat')} in one booking. Tap one of your seats to swap it.
+          {problem}
+        </p>
+      )}
+      {paying && (
+        <p className="m-0 mb-4 rounded-xl bg-sunken px-4 py-3 text-sm font-semibold">
+          A payment is in progress for {selected.length > 1 ? 'these seats' : 'this seat'}.
         </p>
       )}
 
       <div className="flex flex-col gap-7 md:flex-row md:items-start md:gap-6 lg:gap-7">
         <div className="min-w-0 md:w-[340px] md:shrink-0 lg:w-auto lg:flex-1">
-          <SeatMap statuses={statuses} selected={selected} onPick={pick} />
+          {map ? (
+            <SeatMap
+              rows={map.rows}
+              cols={map.cols}
+              cells={map.cells.map((cell) => ({ ...cell, status: cell.type === 'SEAT' ? toSeatStatus(cell.status) : undefined }))}
+              selected={selected}
+              onPick={pick}
+              busy={booking.saving || !bookable || paying}
+            />
+          ) : (
+            <Card>
+              <p className="m-0 text-muted">{errorMessage(seatMap.error)}</p>
+            </Card>
+          )}
         </div>
         <aside aria-label="Your booking" className="hidden min-w-0 flex-col gap-4 md:flex md:flex-1 lg:w-[360px] lg:flex-none">
           <BookingSummary {...summaryProps} />
