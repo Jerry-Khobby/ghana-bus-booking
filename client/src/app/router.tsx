@@ -1,5 +1,6 @@
 import { useEffect, type ComponentType } from 'react'
 import { Outlet, ScrollRestoration, useLocation, type RouteObject } from 'react-router'
+import { ErrorPage } from '@/pages/ErrorPage'
 import { HomePage } from '@/pages/HomePage'
 import { MyTicketsPage } from '@/pages/MyTicketsPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
@@ -40,6 +41,7 @@ function page<M extends Record<string, unknown>>(load: () => Promise<M>, name: k
 export const routes: RouteObject[] = [
   {
     element: <Root />,
+    errorElement: <ErrorPage />,
     children: [
       // Passenger
       { path: '/', element: <HomePage /> },
