@@ -173,6 +173,62 @@ describe('Platform admin (e2e)', () => {
       expect(twice.body.error.code).toBe('EMAIL_EXISTS');
     });
 
+    it('recovers an admin who is locked out', async () => {
+      const operator = (
+        await call('post', '/operators')
+          .send({ name: 'Metro Mass', slug: `metro-mass-${fx.suffix}` })
+          .expect(201)
+      ).body;
+      created.operators.push(operator.id);
+      const email = `kweku@${fx.suffix}.test`;
+      const admin = (
+        await call('post', `/operators/${operator.id}/admins`)
+          .send({ name: 'Kweku A.', email })
+          .expect(201)
+      ).body;
+      const tokenIn = (url: string) =>
+        decodeURIComponent(/token=([^&\s]+)/.exec(url)![1]);
+      const firstInvite = tokenIn(admin.inviteUrl);
+
+      // The invite link was lost: a new one replaces it
+      const resent = await call('post', `/admins/${admin.id}/send-link`).expect(
+        200,
+      );
+      expect(resent.body).toMatchObject({
+        sent: 'INVITE',
+        url: expect.stringMatching(/\/staff\/accept\?token=/),
+      });
+      await http()
+        .post('/api/v1/staff/auth/accept-invite')
+        .send({ token: firstInvite, password: PASSWORD })
+        .expect(401);
+      await http()
+        .post('/api/v1/staff/auth/accept-invite')
+        .send({ token: tokenIn(resent.body.url), password: PASSWORD })
+        .expect(200);
+
+      // Joined, then forgot the password: a reset link
+      const reset = await call('post', `/admins/${admin.id}/send-link`).expect(
+        200,
+      );
+      expect(reset.body).toMatchObject({
+        sent: 'PASSWORD_RESET',
+        url: expect.stringMatching(/\/staff\/reset\?token=/),
+      });
+
+      const admins = await call(
+        'get',
+        `/operators/${operator.id}/admins`,
+      ).expect(200);
+      expect(admins.body).toMatchObject([
+        { id: admin.id, email, status: 'ACTIVE' },
+      ]);
+      // Operator admins can't use it on each other
+      await call('post', `/admins/${admin.id}/send-link`, operatorAdmin).expect(
+        403,
+      );
+    });
+
     it('suspending hides the operator from search and stops sales', async () => {
       const trip = await fx.createTrip({
         loadingStartsAt: minutesFromNow(60),

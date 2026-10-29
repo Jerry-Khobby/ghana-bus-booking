@@ -1,7 +1,10 @@
+import { StrictLimit } from '../common/rate-limits.js';
 import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -74,6 +77,24 @@ export class PlatformController {
     @Req() req: Request,
   ) {
     return this.platform.inviteOperatorAdmin(ctx(user, req), id, dto);
+  }
+
+  /** The operator's admins and whether they have joined. */
+  @Get('operators/:id/admins')
+  listAdmins(@Param('id', ParseUUIDPipe) id: string) {
+    return this.platform.listOperatorAdmins(id);
+  }
+
+  /** Locked out: emails a new invite, or a reset link if they've joined. */
+  @Post('admins/:id/send-link')
+  @HttpCode(HttpStatus.OK)
+  @StrictLimit()
+  sendAdminLink(
+    @CurrentUser() user: StaffUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.platform.sendAdminLink(ctx(user, req), id);
   }
 
   /** Every station, inactive ones included. */

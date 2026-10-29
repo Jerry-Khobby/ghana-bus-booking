@@ -42,6 +42,14 @@ const operatorSelect = {
   _count: { select: { buses: true, routes: true, staff: true } },
 } as const;
 
+const adminSelect = {
+  id: true,
+  name: true,
+  email: true,
+  status: true,
+  lastActiveAt: true,
+} as const;
+
 /**
  * The platform itself: the bus companies on it and the stations they share.
  * There are no screens for this yet; use Swagger or an API client.
@@ -186,6 +194,85 @@ export class PlatformService {
       operator,
       ...(SHOW_LINKS && {
         inviteUrl: this.messages.staffLink('accept', token),
+      }),
+    };
+  }
+
+  /** GET /platform/operators/:id/admins */
+  async listOperatorAdmins(operatorId: string) {
+    const operator = await this.prisma.operator.findUnique({
+      where: { id: operatorId },
+      select: { id: true },
+    });
+    if (!operator) throw notFound('Operator');
+    return this.prisma.staffUser.findMany({
+      where: { operatorId, role: StaffRole.OPERATOR_ADMIN },
+      orderBy: { name: 'asc' },
+      select: adminSelect,
+    });
+  }
+
+  /**
+   * POST /platform/admins/:id/send-link: an operator admin has no one above
+   * them in their company, so the platform recovers their account. Invited:
+   * a fresh invite replaces the old one. Active: a 1-hour reset link.
+   */
+  async sendAdminLink(ctx: PlatformContext, id: string) {
+    const admin = await this.prisma.staffUser.findFirst({
+      where: { id, role: StaffRole.OPERATOR_ADMIN },
+      select: {
+        ...adminSelect,
+        operatorId: true,
+        operator: { select: { name: true } },
+      },
+    });
+    if (!admin) throw notFound('Admin');
+    if (admin.status === StaffStatus.DISABLED) {
+      throw new AppException(
+        'INVALID_STATE',
+        'This admin is disabled',
+        HttpStatus.CONFLICT,
+      );
+    }
+    const invite = admin.status === StaffStatus.INVITED;
+
+    const { token, messageId } = await this.prisma.$transaction(async (tx) => {
+      if (invite) {
+        await tx.staffToken.deleteMany({
+          where: { staffUserId: id, type: TokenType.INVITE, usedAt: null },
+        });
+      }
+      const token = await this.staffAuth.issueToken(
+        id,
+        invite ? TokenType.INVITE : TokenType.PASSWORD_RESET,
+        tx,
+      );
+      const messageId = invite
+        ? await this.messages.queueStaffInvite(tx, admin.email, {
+            name: admin.name,
+            operatorName: admin.operator!.name,
+            token,
+          })
+        : await this.messages.queueStaffReset(tx, admin.email, {
+            name: admin.name,
+            token,
+          });
+      await this.audit.record(tx, {
+        ...entry(
+          ctx,
+          invite ? 'admin.resend-invite' : 'admin.reset-password',
+          'StaffUser',
+          id,
+        ),
+        operatorId: admin.operatorId,
+      });
+      return { token, messageId };
+    });
+    await this.messages.send([messageId]);
+    return {
+      sent: invite ? ('INVITE' as const) : ('PASSWORD_RESET' as const),
+      ...(SHOW_LINKS && {
+        url: this.messages.staffLink(invite ? 'accept' : 'reset', token),
       }),
     };
   }
