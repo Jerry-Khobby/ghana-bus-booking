@@ -169,6 +169,28 @@ describe('Payments (e2e)', () => {
       ).toBe(1);
     });
 
+    it('hands back the paid payment if the reply was lost and the passenger pays again', async () => {
+      const { hold } = await holdSeat();
+      const first = await pay(hold).expect(201);
+      await verify(first.body.paymentId, hold.holdToken).expect(200);
+
+      const again = await pay(hold).expect(201);
+      expect(again.body).toMatchObject({
+        paymentId: first.body.paymentId,
+        status: 'SUCCESS',
+        tickets: [{ seatLabel: '1' }],
+      });
+      // The hold names its latest payment, for a screen picking up the pieces
+      const summary = await http()
+        .get(`/api/v1/holds/${hold.holdId}`)
+        .set('X-Hold-Token', hold.holdToken)
+        .expect(200);
+      expect(summary.body).toMatchObject({
+        status: 'CONFIRMED',
+        payment: { id: first.body.paymentId, status: 'SUCCESS' },
+      });
+    });
+
     it('replays the first response for a repeated Idempotency-Key', async () => {
       const { hold } = await holdSeat();
       const key = `test-${hold.holdId}`;

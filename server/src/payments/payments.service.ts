@@ -144,12 +144,17 @@ export class PaymentsService {
         },
       });
       if (!count) {
-        const open = await tx.payment.findFirst({
-          where: { bookingId, status: { in: OPEN_PAYMENTS } },
+        // A second tap, or a retry after the reply was lost: hand back the
+        // payment still under way, or the one that already paid for it
+        const existing = await tx.payment.findFirst({
+          where: {
+            bookingId,
+            status: { in: [...OPEN_PAYMENTS, PaymentStatus.SUCCESS] },
+          },
           orderBy: { createdAt: 'desc' },
           select: { id: true },
         });
-        if (open) return { paymentId: open.id, isNew: false };
+        if (existing) return { paymentId: existing.id, isNew: false };
         throw await this.notPayable(tx, bookingId);
       }
 

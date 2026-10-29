@@ -329,6 +329,12 @@ export class BookingsService {
         feePesewas: true,
         totalPesewas: true,
         holdExpiresAt: true,
+        // The latest attempt, so a screen that lost the pay reply can pick it up
+        payments: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { id: true, status: true },
+        },
         trip: {
           select: {
             id: true,
@@ -376,6 +382,7 @@ export class BookingsService {
       currency: 'GHS' as const,
       expiresAt: booking.holdExpiresAt,
       secondsLeft,
+      payment: booking.payments[0] ?? null,
     };
   }
 
