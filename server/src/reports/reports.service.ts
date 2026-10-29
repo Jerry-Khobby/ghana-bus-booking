@@ -220,6 +220,7 @@ export class ReportsService {
         ...(cursor && { cursor: { id: cursor }, skip: 1 }),
         select: {
           id: true,
+          groupId: true,
           code: true,
           confirmedAt: true,
           seatLabel: true,
@@ -245,6 +246,23 @@ export class ReportsService {
           },
         },
       });
+      // Seats bought together share one payment, on the hold's first booking
+      const holdIds = batch.flatMap((b) =>
+        !b.payments.length && b.groupId ? [b.groupId] : [],
+      );
+      const holdPayments = holdIds.length
+        ? await this.prisma.payment.findMany({
+            where: {
+              bookingId: { in: holdIds },
+              status: PaymentStatus.SUCCESS,
+            },
+            select: { bookingId: true, method: true },
+          })
+        : [];
+      const methodOf = (b: (typeof batch)[number]) =>
+        b.payments[0]?.method ??
+        holdPayments.find((p) => p.bookingId === b.groupId)?.method ??
+        '';
       for (const b of batch) {
         yield csvLine([
           b.confirmedAt!.toISOString(),
@@ -253,7 +271,7 @@ export class ReportsService {
           b.trip.bus.plate,
           b.seatLabel,
           b.channel,
-          b.payments[0]?.method ?? '',
+          methodOf(b),
           (b.totalPesewas / 100).toFixed(2),
           b.status,
           b.soldBy?.name ?? '',
