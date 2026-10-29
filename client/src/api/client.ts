@@ -40,6 +40,13 @@ export function errorMessage(error: unknown): string {
   return 'Something went wrong. Please try again.'
 }
 
+const NETWORK_MESSAGE = 'Could not reach Seatline. Check your connection and try again.'
+
+/** The request never got a real answer: no connection, a timeout, or a proxy with nothing to say. */
+export function isNetworkError(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'NETWORK'
+}
+
 // ─── Session ─────────────────────────────────────────────────────────────────
 // The access token lives in memory only; the refresh token is an httpOnly
 // cookie the page never sees. A reload starts signed out until restoreSession.
@@ -71,9 +78,15 @@ let refreshing: Promise<string | null> | null = null
 export function refreshSession(): Promise<string | null> {
   refreshing ??= fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
     .then(async (res) => {
-      const token = res.ok ? ((await res.json()) as { accessToken: string }).accessToken : null
-      setAccessToken(token)
-      return token
+      if (res.ok) {
+        const { accessToken: token } = (await res.json()) as { accessToken: string }
+        setAccessToken(token)
+        return token
+      }
+      // Only a refusal ends the session; a bad connection or a waking server
+      // leaves the user signed in to try again
+      if (res.status === 401 || res.status === 403) setAccessToken(null)
+      return null
     })
     .catch(() => null)
     .finally(() => {
@@ -107,20 +120,57 @@ export function apiUrl(path: string, query?: Query): string {
   return `${API_BASE}${path}${qs ? `?${qs}` : ''}`
 }
 
+/** Longest a request may take before it counts as a lost connection. */
+const TIMEOUT_MS = 30_000
+/** Pauses before each retry of a request that never got an answer. */
+const RETRY_DELAYS_MS = [1_000, 3_000]
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * One request. Reads, and writes with an idempotency key (the server
+ * replays those), are retried when the connection fails, since running them
+ * twice can't do harm. Other writes fail at once and the caller decides.
+ */
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const send = (token: string | null) => {
+  const method = options.method ?? 'GET'
+  const retryable = method === 'GET' || !!options.idempotencyKey
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await request<T>(path, options)
+    } catch (error) {
+      const delay = RETRY_DELAYS_MS[attempt]
+      if (!retryable || !isNetworkError(error) || delay === undefined || options.signal?.aborted) throw error
+      await sleep(delay)
+    }
+  }
+}
+
+async function request<T>(path: string, options: RequestOptions): Promise<T> {
+  const send = async (token: string | null) => {
     const headers: Record<string, string> = { Accept: 'application/json' }
     if (options.body !== undefined) headers['Content-Type'] = 'application/json'
     if (token) headers.Authorization = `Bearer ${token}`
     if (options.holdToken) headers['X-Hold-Token'] = options.holdToken
     if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey
-    return fetch(apiUrl(path, options.query), {
-      method: options.method ?? 'GET',
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      credentials: 'include',
-      signal: options.signal,
-    })
+
+    // Give up on a request that hangs, but still let the caller cancel it
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+    const cancel = () => controller.abort()
+    options.signal?.addEventListener('abort', cancel)
+    try {
+      return await fetch(apiUrl(path, options.query), {
+        method: options.method ?? 'GET',
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        credentials: 'include',
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timer)
+      options.signal?.removeEventListener('abort', cancel)
+    }
   }
 
   let res: Response
@@ -133,23 +183,29 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       if (fresh) res = await send(fresh)
     }
   } catch (error) {
-    if ((error as Error).name === 'AbortError') throw error
-    throw new ApiError(0, 'NETWORK', 'Could not reach Seatline. Check your connection and try again.')
+    // Cancelled by the caller (the screen moved on): not an error to show
+    if (options.signal?.aborted) throw error
+    throw new ApiError(0, 'NETWORK', NETWORK_MESSAGE)
   }
 
   if (res.status === 204) return undefined as T
-  const text = await res.text()
+  let text: string
+  try {
+    text = await res.text()
+  } catch {
+    // The connection dropped halfway through the reply
+    throw new ApiError(0, 'NETWORK', NETWORK_MESSAGE)
+  }
   const data = text ? safeJson(text) : undefined
   if (!res.ok) {
     const error = (data as { error?: { code: string; message: string; details?: Record<string, unknown>; requestId?: string } })
       ?.error
-    throw new ApiError(
-      res.status,
-      error?.code ?? 'INTERNAL',
-      error?.message ?? 'Something went wrong. Please try again.',
-      error?.details,
-      error?.requestId,
-    )
+    if (!error) {
+      // Not the API's answer: a proxy, or Render waking the server up
+      if (res.status >= 500) throw new ApiError(res.status, 'NETWORK', NETWORK_MESSAGE)
+      throw new ApiError(res.status, 'INTERNAL', 'Something went wrong. Please try again.')
+    }
+    throw new ApiError(res.status, error.code, error.message, error.details, error.requestId)
   }
   return data as T
 }
