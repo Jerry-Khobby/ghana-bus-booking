@@ -1,22 +1,37 @@
 import { useState, type FormEvent } from 'react'
 import { Button, Heading, TextInput } from '@/components/atoms'
 import { FormField, SegmentedControl } from '@/components/molecules'
-import type { StaffRole } from '@/app/AuthContext'
+import { errorMessage, isApiError } from '@/api/client'
+
+type SignInAs = 'agent' | 'operator'
 
 interface StaffSignInCardProps {
-  initialRole?: StaffRole
-  onSignIn: (email: string, role: StaffRole) => void
+  initialRole?: SignInAs
+  /** Signs in; throws the server's error if it says no. */
+  onSignIn: (email: string, password: string, role: SignInAs) => Promise<void>
 }
 
 /** Email and password sign-in for station agents and operators. */
 export function StaffSignInCard({ initialRole = 'agent', onSignIn }: StaffSignInCardProps) {
-  const [role, setRole] = useState<StaffRole>(initialRole)
+  const [role, setRole] = useState<SignInAs>(initialRole)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault()
-    onSignIn(email, role)
+    setBusy(true)
+    setError(null)
+    try {
+      await onSignIn(email.trim(), password, role)
+    } catch (err) {
+      const wait = isApiError(err, 'ACCOUNT_LOCKED') ? (err.details.retryAfterSeconds as number | undefined) : undefined
+      setError(wait ? `${errorMessage(err)} Try again in ${Math.ceil(wait / 60)} min.` : errorMessage(err))
+      setPassword('')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -45,8 +60,13 @@ export function StaffSignInCard({ initialRole = 'agent', onSignIn }: StaffSignIn
         <FormField id="st-pass" label="Password">
           <TextInput id="st-pass" type="password" autoComplete="current-password" inputSize="lg" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
         </FormField>
-        <Button type="submit" size="lg" className="min-h-[54px] text-[17px]">
-          {role === 'agent' ? 'Sign in to the loading console' : 'Sign in to the operator dashboard'}
+        {error && (
+          <p role="alert" className="m-0 text-sm font-semibold text-danger">
+            {error}
+          </p>
+        )}
+        <Button type="submit" size="lg" className="min-h-[54px] text-[17px]" disabled={busy} aria-busy={busy}>
+          {busy ? 'Signing in…' : role === 'agent' ? 'Sign in to the loading console' : 'Sign in to the operator dashboard'}
         </Button>
       </form>
 

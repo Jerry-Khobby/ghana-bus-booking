@@ -1,20 +1,28 @@
-import { useNavigate, useSearchParams } from 'react-router'
-import { useAuth } from '@/app/AuthContext'
+import { Navigate, useNavigate, useSearchParams } from 'react-router'
+import { useAuth, type Passenger } from '@/app/AuthContext'
 import { useBooking } from '@/app/BookingContext'
 import { PassengerSignInForm, SignInBenefits } from '@/components/organisms'
 import { AuthTemplate } from '@/components/templates'
 
+/** Only paths inside the app, so ?next= can't send people elsewhere. */
+export function safeNext(next: string | null, fallback: string) {
+  return next && next.startsWith('/') && !next.startsWith('//') ? next : fallback
+}
+
 export function SignInPage() {
-  const { signInPassenger } = useAuth()
+  const { passenger, ready } = useAuth()
   const booking = useBooking()
   const navigate = useNavigate()
   const [params] = useSearchParams()
+  const next = safeNext(params.get('next'), '/tickets')
 
-  function verified(phone: string) {
-    signInPassenger(phone)
+  if (ready && passenger) return <Navigate to={next} replace />
+
+  function verified(p: Passenger) {
     // "Your mobile money number is filled in for you"
-    if (!booking.phone) booking.setPhone(`0${phone}`)
-    navigate(params.get('next') ?? '/tickets')
+    if (!booking.phone && p.phone) booking.setPhone(`0${p.phone.replace(/^\+233/, '')}`)
+    if (!booking.email) booking.setEmail(p.email)
+    navigate(next)
   }
 
   return (

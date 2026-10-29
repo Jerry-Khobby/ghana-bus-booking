@@ -3,14 +3,14 @@ import { Link } from 'react-router'
 import { Button, FieldLabel, Heading } from '@/components/atoms'
 import { CodeInput } from '@/components/molecules'
 import { useCountdown } from '@/hooks/useCountdown'
-import { cx } from '@/lib/format'
-
-const RESEND_SECONDS = 45
+import { maskEmail, useAuth, type Passenger } from '@/app/AuthContext'
+import { requestCode } from '@/api/auth'
+import { errorMessage, isApiError } from '@/api/client'
 
 const benefits = [
   { long: 'See all your upcoming and past tickets in one place', short: 'All your tickets in one place' },
   { long: 'Your mobile money number is filled in for you', short: 'Your mobile money number filled in' },
-  { long: 'Show your QR ticket even if you lose the SMS', short: 'Show your QR even if you lose the SMS' },
+  { long: 'Show your QR ticket even if you lose the email', short: 'Show your QR even if you lose the email' },
 ]
 
 function Step({ n }: { n: number }) {
@@ -29,7 +29,7 @@ export function SignInBenefits() {
         <Heading as="h1" size="lg" className="text-[40px] leading-[1.05] tracking-[-0.03em] lg:text-[40px]">
           Your tickets, on any phone.
         </Heading>
-        <p className="m-0 mt-4 text-[17px] text-on-dark">Sign in with your phone number. No password to remember.</p>
+        <p className="m-0 mt-4 text-[17px] text-on-dark">Sign in with your email. No password to remember.</p>
       </div>
       <ul className="m-0 flex list-none flex-col gap-3 p-0 md:grid md:grid-cols-3 md:gap-[18px] lg:flex lg:gap-3.5">
         {benefits.map((b, i) => (
@@ -42,76 +42,104 @@ export function SignInBenefits() {
           </li>
         ))}
       </ul>
-      <p className="m-0 text-sm text-on-dark">You can also book without an account. We text your ticket to the number you pay with.</p>
+      <p className="m-0 text-sm text-on-dark">You can also book without an account. We email your ticket to the address you give.</p>
     </section>
   )
 }
 
 interface PassengerSignInFormProps {
-  /** Called with the national number once the code is verified. */
-  onVerified: (phone: string) => void
+  /** Called once the code is right and the passenger is signed in. */
+  onVerified: (passenger: Passenger) => void
 }
 
-/** Two steps: phone number, then the 6-digit SMS code. */
+/** Two steps: email address, then the 6-digit code we email. */
 export function PassengerSignInForm({ onVerified }: PassengerSignInFormProps) {
-  const [step, setStep] = useState<'phone' | 'code'>('phone')
-  const [phone, setPhone] = useState('')
+  const { signInPassenger } = useAuth()
+  const [step, setStep] = useState<'email' | 'code'>('email')
+  const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [resendAt, setResendAt] = useState<number | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const resendIn = useCountdown(resendAt)
-  const digits = phone.replace(/\D/g, '').replace(/^0/, '')
-  const phoneValid = digits.length === 9
+  const emailValid = /^[^s@]+@[^s@]+.[^s@]+$/.test(email.trim())
+
+  async function send() {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await requestCode(email.trim())
+      setCode('')
+      setResendAt(Date.now() + res.resendAfterSeconds * 1000)
+      setStep('code')
+    } catch (e) {
+      const wait = isApiError(e) ? (e.details.retryAfterSeconds as number | undefined) : undefined
+      setError(wait ? `${errorMessage(e)} (about ${Math.ceil(wait / 60)} min)` : errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   function sendCode(e: FormEvent) {
     e.preventDefault()
-    if (!phoneValid) return
-    setCode('')
-    setResendAt(Date.now() + RESEND_SECONDS * 1000)
-    setStep('code')
+    if (emailValid) void send()
   }
 
-  function verify(e: FormEvent) {
+  async function verify(e: FormEvent) {
     e.preventDefault()
-    if (code.length === 6) onVerified(`${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5)}`)
+    if (code.length !== 6) return
+    setBusy(true)
+    setError(null)
+    try {
+      onVerified(await signInPassenger(email.trim(), code))
+    } catch (err) {
+      const left = isApiError(err, 'OTP_INVALID') ? (err.details.attemptsLeft as number | undefined) : undefined
+      setError(left ? `${errorMessage(err)}. ${left} ${left === 1 ? 'try' : 'tries'} left.` : errorMessage(err))
+      setCode('')
+    } finally {
+      setBusy(false)
+    }
   }
+
+  const problem = error && (
+    <p role="alert" className="m-0 text-sm font-semibold text-danger">
+      {error}
+    </p>
+  )
 
   return (
     <section
       aria-labelledby="signin-h"
       className="flex flex-col justify-center gap-[18px] rounded-[18px] border border-line bg-surface px-4 py-5 md:gap-[22px] md:rounded-[20px] md:p-8 lg:flex-1 lg:gap-6 lg:p-10"
     >
-      {step === 'phone' ? (
+      {step === 'email' ? (
         <form onSubmit={sendCode} className="flex flex-col gap-[18px] md:gap-[22px] lg:gap-6">
           <div>
             <Heading as="h2" size="lg" id="signin-h" className="text-[26px] md:text-[30px]">
               Sign in or create an account
             </Heading>
-            <p className="m-0 mt-1.5 text-muted">We will text you a 6-digit code.<span className="lg:hidden"> No password needed.</span></p>
+            <p className="m-0 mt-1.5 text-muted">We will email you a 6-digit code.<span className="lg:hidden"> No password needed.</span></p>
           </div>
           <div className="flex flex-col gap-1.5">
-            <FieldLabel htmlFor="si-phone">Phone number</FieldLabel>
-            <div className="flex gap-2">
-              <span className="flex h-[52px] flex-none items-center rounded-[10px] border border-line-strong bg-canvas px-3.5 font-mono font-semibold" aria-hidden="true">
-                +233
-              </span>
-              <input
-                id="si-phone"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel-national"
-                placeholder="24 000 0000"
-                aria-describedby="si-phone-hint"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="h-[52px] min-w-0 flex-1 rounded-[10px] border border-line-strong bg-surface px-3.5 font-mono text-lg text-ink hover:border-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
-              />
-            </div>
-            <p id="si-phone-hint" className={cx('m-0 text-sm', phone && !phoneValid ? 'text-danger' : 'text-muted')}>
-              {phone && !phoneValid ? 'Enter the 9 digits after +233, e.g. 24 000 0000.' : 'Ghana numbers only for now.'}
+            <FieldLabel htmlFor="si-email">Email address</FieldLabel>
+            <input
+              id="si-email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              aria-describedby="si-email-hint"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-[52px] min-w-0 rounded-[10px] border border-line-strong bg-surface px-3.5 text-lg text-ink hover:border-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
+            />
+            <p id="si-email-hint" className="m-0 text-sm text-muted">
+              Use the email you put on your tickets, and they show up in your account.
             </p>
           </div>
-          <Button type="submit" size="lg" className="min-h-[54px] text-[17px]" disabled={!phoneValid}>
-            Send code
+          {problem}
+          <Button type="submit" size="lg" className="min-h-[54px] text-[17px]" disabled={!emailValid || busy} aria-busy={busy}>
+            {busy ? 'Sending…' : 'Send code'}
           </Button>
         </form>
       ) : (
@@ -121,13 +149,13 @@ export function PassengerSignInForm({ onVerified }: PassengerSignInFormProps) {
               Enter the code
             </Heading>
             <p className="m-0 mt-1.5 text-muted">
-              Sent by SMS to <strong className="text-ink">+233 {digits.slice(0, 2)} *** {digits.slice(-4)}</strong>
+              Sent to <strong className="text-ink">{maskEmail(email.trim())}</strong>. Check spam if it isn't there in a minute.
             </p>
           </div>
           <CodeInput value={code} onChange={setCode} />
-          <p className="m-0 text-sm text-muted">Test mode: any 6 digits will do.</p>
-          <Button type="submit" size="lg" className="min-h-[54px] text-[17px]" disabled={code.length < 6}>
-            Verify and continue
+          {problem}
+          <Button type="submit" size="lg" className="min-h-[54px] text-[17px]" disabled={code.length < 6 || busy} aria-busy={busy}>
+            {busy ? 'Checking…' : 'Verify and continue'}
           </Button>
           <div className="flex flex-wrap items-center justify-between gap-3 text-[15px]">
             {resendIn ? (
@@ -135,12 +163,19 @@ export function PassengerSignInForm({ onVerified }: PassengerSignInFormProps) {
                 Resend<span className="hidden sm:inline"> code</span> in <span className="font-mono">0:{String(resendIn).padStart(2, '0')}</span>
               </span>
             ) : (
-              <button type="button" onClick={() => setResendAt(Date.now() + RESEND_SECONDS * 1000)} className="min-h-11 cursor-pointer border-0 bg-transparent p-0 font-semibold text-brand underline">
+              <button type="button" onClick={() => void send()} disabled={busy} className="min-h-11 cursor-pointer border-0 bg-transparent p-0 font-semibold text-brand underline">
                 Resend code
               </button>
             )}
-            <button type="button" onClick={() => setStep('phone')} className="min-h-11 cursor-pointer border-0 bg-transparent p-0 font-semibold text-brand underline">
-              Change number
+            <button
+              type="button"
+              onClick={() => {
+                setStep('email')
+                setError(null)
+              }}
+              className="min-h-11 cursor-pointer border-0 bg-transparent p-0 font-semibold text-brand underline"
+            >
+              Change email
             </button>
           </div>
         </form>

@@ -1,43 +1,28 @@
 import { useState } from 'react'
-import { maskedIntl, useAuth } from '@/app/AuthContext'
+import { useDeviceTickets, useMyTickets } from '@/api/tickets'
+import { maskEmail, useAuth } from '@/app/AuthContext'
 import { useBooking } from '@/app/BookingContext'
 import { ButtonLink, Card, Heading } from '@/components/atoms'
 import { PageHeader, SegmentedControl } from '@/components/molecules'
 import { MyTicketCard, isUpcoming } from '@/components/organisms'
 import { PublicTemplate } from '@/components/templates'
-import { SERVICE_FEE, findTrip } from '@/data/mock'
-import { passengerTickets } from '@/data/tickets'
-import type { PassengerTicket, Ticket } from '@/data/types'
-import { departureLabel } from '@/lib/format'
-
-/** A ticket bought in this session, in the shape "My tickets" lists. */
-function fromBooking(t: Ticket): PassengerTicket | null {
-  const trip = findTrip(t.tripId)
-  if (!trip) return null
-  return {
-    code: t.code,
-    tripId: trip.id,
-    route: `${trip.from.city} → ${trip.to.city}`,
-    when: `Today · ${departureLabel(trip).toLowerCase()}`,
-    seat: t.seat,
-    plate: trip.plate,
-    paid: trip.fare + SERVICE_FEE,
-    state: trip.status === 'loading' ? 'loading' : 'scheduled',
-    bay: trip.bay,
-  }
-}
 
 export function MyTicketsPage() {
-  const { passenger } = useAuth()
+  const { passenger, ready } = useAuth()
   const { history } = useBooking()
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming')
 
-  const session = history.map(fromBooking).filter((t): t is PassengerTicket => t !== null)
-  // Signed out, only this session's purchases are known; signed in, the account history joins them.
-  const all = passenger ? [...session, ...passengerTickets.filter((p) => !session.some((s) => s.code === p.code))] : session
-  const upcoming = all.filter(isUpcoming)
-  const past = all.filter((t) => !isUpcoming(t))
+  // Signed in: the account's tickets (guest purchases with the same email included)
+  const upcomingQ = useMyTickets('upcoming', !!passenger)
+  const pastQ = useMyTickets('past', !!passenger)
+  // Signed out: what this device bought
+  const device = useDeviceTickets(history, ready && !passenger)
+
+  const upcoming = passenger ? (upcomingQ.data ?? []) : device.tickets.filter(isUpcoming)
+  const past = passenger ? (pastQ.data ?? []) : device.tickets.filter((t) => !isUpcoming(t))
   const shown = tab === 'upcoming' ? upcoming : past
+  const loading = !ready || (passenger ? (tab === 'upcoming' ? upcomingQ : pastQ).isPending : device.pending)
+  const failed = passenger && (tab === 'upcoming' ? upcomingQ : pastQ).isError
 
   return (
     <PublicTemplate>
@@ -48,9 +33,9 @@ export function MyTicketsPage() {
             passenger ? (
               <>
                 <span className="lg:hidden">
-                  {passenger.name} · {maskedIntl(passenger.phone)}
+                  {passenger.name} · {maskEmail(passenger.email)}
                 </span>
-                <span className="hidden lg:inline">Tickets bought with {maskedIntl(passenger.phone)}</span>
+                <span className="hidden lg:inline">Tickets bought with {maskEmail(passenger.email)}</span>
               </>
             ) : (
               'Tickets bought on this device'
@@ -58,12 +43,12 @@ export function MyTicketsPage() {
           }
           action={
             <div className="hidden md:block">
-              <ButtonLink to="/trips">Book a trip</ButtonLink>
+              <ButtonLink to="/">Book a trip</ButtonLink>
             </div>
           }
         />
 
-        {!passenger && (
+        {ready && !passenger && (
           <Card className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <Heading as="h2" size="sm">
@@ -89,7 +74,15 @@ export function MyTicketsPage() {
           />
         </div>
 
-        {shown.length ? (
+        {loading ? (
+          <p role="status" className="m-0 p-8 text-center text-muted">
+            Loading your tickets…
+          </p>
+        ) : failed ? (
+          <p role="alert" className="m-0 rounded-2xl border border-dashed border-line-strong p-8 text-center text-muted">
+            We could not load your tickets. Pull to refresh or try again shortly.
+          </p>
+        ) : shown.length ? (
           <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 lg:gap-4">
             {shown.map((t) => (
               <MyTicketCard key={t.code} ticket={t} />
@@ -105,7 +98,7 @@ export function MyTicketsPage() {
       </div>
 
       <div className="sticky bottom-0 -mx-4 border-t border-line bg-canvas px-4 pb-4 pt-3 md:hidden">
-        <ButtonLink to="/trips" size="lg" block>
+        <ButtonLink to="/" size="lg" block>
           Book a trip
         </ButtonLink>
       </div>
