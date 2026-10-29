@@ -58,8 +58,33 @@ export function getAccessToken() {
   return accessToken
 }
 
+/*
+ * Whether this browser has signed in, so a page load only asks the API to
+ * restore a session when there may be one (a signed-out visitor would get a
+ * 401 every time). Cleared on sign-out or when the API refuses the cookie.
+ */
+const SESSION_HINT = 'seatline.session'
+
+function hasSessionHint() {
+  try {
+    return window.localStorage.getItem(SESSION_HINT) === '1'
+  } catch {
+    return true // Can't tell: ask anyway
+  }
+}
+
+function setSessionHint(on: boolean) {
+  try {
+    if (on) window.localStorage.setItem(SESSION_HINT, '1')
+    else window.localStorage.removeItem(SESSION_HINT)
+  } catch {
+    // Not remembered: the next load just asks
+  }
+}
+
 export function setAccessToken(token: string | null) {
   accessToken = token
+  setSessionHint(!!token)
   listeners.forEach((listener) => listener(token))
 }
 
@@ -76,6 +101,7 @@ let refreshing: Promise<string | null> | null = null
  * moment share one refresh, since each refresh token works only once.
  */
 export function refreshSession(): Promise<string | null> {
+  if (!refreshing && !hasSessionHint()) return Promise.resolve(null)
   refreshing ??= fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
     .then(async (res) => {
       if (res.ok) {
@@ -175,12 +201,17 @@ async function request<T>(path: string, options: RequestOptions): Promise<T> {
 
   let res: Response
   try {
+    // The session is being restored (page load): wait for its token rather
+    // than going out without one and coming back with a 401
+    if (!accessToken && refreshing) await refreshing
     const token = accessToken
     res = await send(token)
-    // The access token ran out (they last 15 minutes): refresh once and retry
-    if (res.status === 401 && token) {
+    // The access token ran out (they last 15 minutes), or the call went out
+    // while the session was still being restored on page load: refresh once
+    // (or wait for the refresh under way) and retry
+    if (res.status === 401 && (token || refreshing || hasSessionHint())) {
       const fresh = await refreshSession()
-      if (fresh) res = await send(fresh)
+      if (fresh && fresh !== token) res = await send(fresh)
     }
   } catch (error) {
     // Cancelled by the caller (the screen moved on): not an error to show
