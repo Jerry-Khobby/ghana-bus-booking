@@ -11,14 +11,17 @@ interface AgentHeaderProps {
 }
 
 export function AgentHeader({ station, agent, back }: AgentHeaderProps) {
-  const { bays, bay, setBay } = useStation()
+  const { console: consoleQuery, setBay } = useStation()
   const { signOutStaff } = useAuth()
   const navigate = useNavigate()
-  const bayRange = `${Math.min(...bays)}–${Math.max(...bays)}`
-  const stationShort = station.split('—')[1]?.replace(' station', '').trim() ?? station
+  const bays = consoleQuery.data?.bays ?? []
+  const bay = consoleQuery.data?.bay
+  const numbers = bays.map((b) => b.number)
+  const bayRange = numbers.length ? (numbers.length === 1 ? `${numbers[0]}` : `${Math.min(...numbers)}–${Math.max(...numbers)}`) : '—'
+  const stationShort = station.split('—')[1]?.replace(' station', '').trim() || station
 
-  function signOut() {
-    signOutStaff()
+  async function signOut() {
+    await signOutStaff()
     navigate('/staff/signin?role=agent')
   }
 
@@ -28,17 +31,20 @@ export function AgentHeader({ station, agent, back }: AgentHeaderProps) {
     </button>
   )
 
-  const picker = (
-    <Dropdown
-      ariaLabel="Bay"
-      tone="dark"
-      size="sm"
-      className="w-[112px]"
-      value={String(bay)}
-      options={bays.map((b) => ({ value: String(b), label: `Bay ${b}` }))}
-      onChange={(v) => setBay(Number(v))}
-    />
-  )
+  const picker =
+    bay && bays.length > 1 ? (
+      <Dropdown
+        ariaLabel="Bay"
+        tone="dark"
+        size="sm"
+        className="w-[112px]"
+        value={bay.id}
+        options={bays.map((b) => ({ value: b.id, label: `Bay ${b.number}` }))}
+        onChange={setBay}
+      />
+    ) : bay ? (
+      <Badge tone="chip">Bay {bay.number}</Badge>
+    ) : null
 
   return (
     <header className="bg-ink text-white">
@@ -77,7 +83,7 @@ export function AgentHeader({ station, agent, back }: AgentHeaderProps) {
       <div className="mx-auto hidden max-w-[1200px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 py-3.5 md:flex">
         <div className="flex flex-wrap items-center gap-3">
           <Logo label="Seatline Agent" size="sm" />
-          <Badge tone="chip">{station}</Badge>
+          {station && <Badge tone="chip">{station}</Badge>}
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-on-dark">

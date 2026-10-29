@@ -1,74 +1,49 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
-import { agentBays } from '@/data/mock'
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import type { UseQueryResult } from '@tanstack/react-query'
+import { useAgentConsole, type ApiConsole } from '@/api/agent'
+import { readStored, writeStored } from '@/lib/storage'
+import { useAuth } from './AuthContext'
 
 /*
- * The station agent's live view of their bays: which bay they are looking at,
- * which seats on the loading bus are still free, and boarding progress.
- * The API will push these changes over a socket; here they live in memory.
+ * The station agent's view of their bays: which bay they are looking at
+ * (remembered between visits) and that bay's live console from the API.
+ * Only fetched while a staff member is signed in.
  */
 
 export type WalkInPayment = 'cash' | 'momo'
 
-export interface WalkInSale {
-  seat: number
-  name: string
-  phone: string
-  payment: WalkInPayment
-  printed: boolean
+interface StationContextValue {
+  /** The bay chosen in the header; null means the first of theirs. */
+  bayId: string | null
+  setBay: (bayId: string) => void
+  console: UseQueryResult<ApiConsole>
 }
 
-interface StationState {
-  bay: number
-  /** Free seat numbers on the bus loading at bay 6, lowest first. */
-  freeSeats: number[]
-  departed: boolean
-  scanned: number
-  sales: WalkInSale[]
-}
-
-interface StationContextValue extends StationState {
-  bays: number[]
-  /** Trip id loading at the selected bay, if any. */
-  tripId: string | null
-  sold: number
-  capacity: number
-  setBay: (bay: number) => void
-  sellWalkIn: (sale: WalkInSale) => void
-  markDeparted: () => void
-  markBoarded: () => void
-}
-
-const CAPACITY = 49
+const BAY_KEY = 'seatline.agent.bay'
 
 const StationContext = createContext<StationContextValue | null>(null)
 
 export function StationProvider({ children }: { children: ReactNode }) {
-  const bays = useMemo(() => Object.keys(agentBays).map(Number).sort((a, b) => b - a), [])
-  const [state, setState] = useState<StationState>({
-    bay: bays[0],
-    freeSeats: [3, 14, 15, 30, 37, 45, 48, 49],
-    departed: false,
-    scanned: 33,
-    sales: [],
-  })
+  const { staff } = useAuth()
+  const [bayId, setBayId] = useState<string | null>(() => readStored<string>(BAY_KEY, 'local'))
+  const consoleQuery = useAgentConsole(bayId, !!staff && staff.role !== 'platform')
 
-  const sellWalkIn = useCallback((sale: WalkInSale) => {
-    setState((s) => ({ ...s, freeSeats: s.freeSeats.filter((n) => n !== sale.seat), sales: [...s.sales, sale] }))
-  }, [])
+  // A remembered bay they no longer work: fall back to their first
+  const bays = consoleQuery.data?.bays
+  useEffect(() => {
+    if (bays && bayId && !bays.some((b) => b.id === bayId)) setBayId(null)
+  }, [bays, bayId])
 
   const value = useMemo<StationContextValue>(
     () => ({
-      ...state,
-      bays,
-      tripId: agentBays[state.bay] ?? null,
-      capacity: CAPACITY,
-      sold: CAPACITY - state.freeSeats.length,
-      setBay: (bay) => setState((s) => ({ ...s, bay })),
-      sellWalkIn,
-      markDeparted: () => setState((s) => ({ ...s, departed: true })),
-      markBoarded: () => setState((s) => ({ ...s, scanned: s.scanned + 1 })),
+      bayId,
+      setBay: (id) => {
+        setBayId(id)
+        writeStored(BAY_KEY, id, 'local')
+      },
+      console: consoleQuery,
     }),
-    [state, bays, sellWalkIn],
+    [bayId, consoleQuery],
   )
 
   return <StationContext.Provider value={value}>{children}</StationContext.Provider>
