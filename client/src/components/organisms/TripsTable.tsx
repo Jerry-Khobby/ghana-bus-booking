@@ -8,6 +8,8 @@ import { ResponsiveTable, RowCard, StackedCell, type Column } from './Responsive
 
 export interface OperatorTripRow extends OperatorTrip {
   revenue?: number
+  /** The server's say on whether it can still be changed. */
+  editable?: boolean
 }
 
 export const tripStatusText: Record<TripStatus, string> = {
@@ -17,17 +19,17 @@ export const tripStatusText: Record<TripStatus, string> = {
   departed: 'Departed',
 }
 
-export function isEditableTrip(t: OperatorTrip) {
-  return t.status === 'loading' || t.status === 'scheduled'
+export function isEditableTrip(t: OperatorTripRow) {
+  return t.editable ?? (t.status === 'loading' || t.status === 'scheduled')
 }
 
-function SoldBar({ trip, wide }: { trip: OperatorTrip; wide?: boolean }) {
+function SoldBar({ trip, wide }: { trip: OperatorTripRow; wide?: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
       <ProgressBar
         className={wide ? 'flex-1' : 'w-[90px]'}
         size="sm"
-        value={(trip.sold / trip.capacity) * 100}
+        value={trip.capacity ? (trip.sold / trip.capacity) * 100 : 0}
         tone={trip.status === 'departed' ? 'inactive' : 'brand'}
       />
       <span className="font-mono text-[13px] md:text-sm">

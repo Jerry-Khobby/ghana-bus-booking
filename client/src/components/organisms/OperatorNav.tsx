@@ -30,8 +30,8 @@ export function OperatorNav({ operator, title, context = 'today', back }: Operat
   const { signOutStaff } = useAuth()
   const navigate = useNavigate()
 
-  function signOut() {
-    signOutStaff()
+  async function signOut() {
+    await signOutStaff()
     navigate('/staff/signin?role=operator')
   }
 
