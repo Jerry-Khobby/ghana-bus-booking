@@ -209,13 +209,25 @@ export class MessagesService {
   }
 
   /**
-   * Sends these queued messages now. Never throws: a failure stays QUEUED
-   * (with the error) for the tick to retry, so the request that caused the
-   * email still succeeds.
+   * Sends these queued messages, in the background: the request that caused
+   * them answers straight away rather than waiting on a mail server (a slow
+   * or blocked one once held a payment for two minutes). Never throws: a
+   * failure stays QUEUED, with the error, for the tick to retry.
+   * MAIL_DELIVERY=inline waits instead, for tests that read the inbox.
    */
   async send(ids: (string | null)[]): Promise<void> {
+    const delivery = this.deliver(ids);
+    if (process.env.MAIL_DELIVERY === 'inline') await delivery;
+  }
+
+  private async deliver(ids: (string | null)[]) {
     for (const id of ids) {
-      if (id) await this.sendOne(id);
+      if (!id) continue;
+      await this.sendOne(id).catch((error: unknown) =>
+        this.logger.error(
+          `Email ${id} could not be delivered: ${(error as Error).message}`,
+        ),
+      );
     }
   }
 

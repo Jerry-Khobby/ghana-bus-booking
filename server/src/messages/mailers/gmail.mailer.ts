@@ -18,6 +18,11 @@ export class GmailMailer implements Mailer {
       port: 465,
       secure: true,
       auth: { user, pass: appPassword },
+      // Fail in seconds, not minutes, when SMTP can't be reached (Render's
+      // free plan blocks it): the outbox keeps the email for the tick
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
     });
   }
 

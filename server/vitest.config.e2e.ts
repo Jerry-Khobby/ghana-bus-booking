@@ -18,6 +18,8 @@ export default defineConfig({
       QR_SIGNING_SECRET: 'test-qr-secret',
       TICKET_LINK_SECRET: 'test-ticket-link-secret',
       MAIL_PROVIDER: 'log',
+      // Tests read the inbox right after a request, so send before answering
+      MAIL_DELIVERY: 'inline',
       WEB_URL: 'http://web.test',
       TICK_SECRET: 'test-tick-secret',
       JWT_ACCESS_SECRET: 'test-jwt-secret',
