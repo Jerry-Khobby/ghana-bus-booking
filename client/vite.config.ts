@@ -28,7 +28,29 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       proxy: {
-        '/api': { target: apiTarget, changeOrigin: true, secure: true, agent },
+        '/api': {
+          target: apiTarget,
+          changeOrigin: true,
+          secure: true,
+          agent,
+          // Couldn't reach the API: answer in the API's own error shape, so
+          // the app says "could not reach Seatline" instead of a blank 500
+          configure: (proxy) => {
+            proxy.on('error', (error, _req, res) => {
+              if (!('writeHead' in res) || res.headersSent) return
+              res.writeHead(502, { 'Content-Type': 'application/json' })
+              res.end(
+                JSON.stringify({
+                  error: {
+                    code: 'NETWORK',
+                    message: 'Could not reach Seatline. Check your connection and try again.',
+                    details: { cause: (error as NodeJS.ErrnoException).code ?? error.message },
+                  },
+                }),
+              )
+            })
+          },
+        },
       },
     },
   }
