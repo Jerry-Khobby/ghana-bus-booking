@@ -207,7 +207,7 @@ export const busStatusOf = (s: ApiBus['status']): BusStatus => (s === 'ACTIVE' ?
 export function busNext(b: ApiBus): string {
   if (b.status !== 'ACTIVE') {
     return b.backInServiceOn
-      ? `Back ${dayFormat.format(new Date(`${b.backInServiceOn}T12:00:00Z`))}`
+      ? `Back ${dayFormat.format(new Date(`${b.backInServiceOn.slice(0, 10)}T12:00:00Z`))}`
       : 'In the workshop'
   }
   const t = b.nextTrip
