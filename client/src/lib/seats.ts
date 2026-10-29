@@ -1,5 +1,4 @@
-import { demoSeatMap } from '@/data/mock'
-import type { SeatLayout, SeatStatus, Trip } from '@/data/types'
+import type { SeatLayout } from '@/data/types'
 
 export const HOLD_SECONDS = 5 * 60
 
@@ -33,33 +32,6 @@ export function seatPosition(seat: number, layout: SeatLayout = defaultLayout): 
   if (seat > layout.rows * perRow) return 'back row'
   const col = (seat - 1) % perRow
   return col === 0 || col === perRow - 1 ? 'window' : 'aisle'
-}
-
-/**
- * Seat states for a trip. The demo bus uses the fixed map from the design;
- * other trips get a stable spread of free seats that matches `seatsLeft`.
- */
-export function seatStatuses(trip: Trip): Map<number, Exclude<SeatStatus, 'mine'>> {
-  const map = new Map<number, Exclude<SeatStatus, 'mine'>>()
-  for (let i = 1; i <= trip.capacity; i++) map.set(i, 'taken')
-
-  if (trip.id === 'gr-4471-24') {
-    demoSeatMap.free.forEach((s) => map.set(s, 'free'))
-    demoSeatMap.held.forEach((s) => map.set(s, 'held'))
-    return map
-  }
-
-  const order = Array.from({ length: trip.capacity }, (_, i) => i + 1).sort(
-    (a, b) => hash(trip.id, a) - hash(trip.id, b),
-  )
-  order.slice(0, trip.seatsLeft).forEach((s) => map.set(s, 'free'))
-  return map
-}
-
-function hash(seed: string, n: number): number {
-  let h = 2166136261
-  for (const ch of seed + n) h = Math.imul(h ^ ch.charCodeAt(0), 16777619)
-  return h >>> 0
 }
 
 /* ---------- The API's layout grid ---------- */

@@ -4,6 +4,8 @@ export type SeatStatus = 'free' | 'mine' | 'held' | 'taken'
 
 export type BusType = 'Air-conditioned coach' | 'Standard bus' | 'Minibus'
 
+export const busTypes: readonly BusType[] = ['Air-conditioned coach', 'Standard bus', 'Minibus']
+
 export interface Station {
   city: string
   name: string

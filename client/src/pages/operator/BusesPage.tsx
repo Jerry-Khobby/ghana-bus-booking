@@ -6,8 +6,7 @@ import { Button, Dropdown, TextInput } from '@/components/atoms'
 import { FormField, InlineFormCard, LoadState, PageHeader } from '@/components/molecules'
 import { BusesTable, type BusRow } from '@/components/organisms'
 import { OperatorTemplate } from '@/components/templates'
-import { busTypes } from '@/data/mock'
-import type { BusType } from '@/data/types'
+import { busTypes, type BusType } from '@/data/types'
 
 export function BusesPage() {
   return (

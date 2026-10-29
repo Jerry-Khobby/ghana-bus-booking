@@ -6,7 +6,7 @@ import { LoadState } from '@/components/molecules'
 import { RouteBanner, TripFilters, TripResultCard, type ShowFilter } from '@/components/organisms'
 import { isoDate } from '@/components/organisms/SearchForm'
 import { PublicTemplate } from '@/components/templates'
-import { busTypes } from '@/data/mock'
+import { busTypes } from '@/data/types'
 import { plural } from '@/lib/format'
 import { MAX_SEATS } from '@/lib/seats'
 

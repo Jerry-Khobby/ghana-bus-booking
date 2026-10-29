@@ -5,7 +5,6 @@ import { createBrowserRouter, RouterProvider } from 'react-router'
 import { queryClient } from '@/api/query'
 import { AuthProvider } from '@/app/AuthContext'
 import { BookingProvider } from '@/app/BookingContext'
-import { OperatorProvider } from '@/app/OperatorContext'
 import { StationProvider } from '@/app/StationContext'
 import { routes } from '@/app/router'
 import './index.css'
@@ -18,9 +17,7 @@ createRoot(document.getElementById('root')!).render(
       <AuthProvider>
         <BookingProvider>
           <StationProvider>
-            <OperatorProvider>
-              <RouterProvider router={router} />
-            </OperatorProvider>
+            <RouterProvider router={router} />
           </StationProvider>
         </BookingProvider>
       </AuthProvider>
