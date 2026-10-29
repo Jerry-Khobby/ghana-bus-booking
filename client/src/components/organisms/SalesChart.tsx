@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import { Heading } from '@/components/atoms'
-import type { DailySales } from '@/data/operator'
+import type { ApiDaily } from '@/api/admin'
 import { cx } from '@/lib/format'
 
 interface SalesChartProps {
-  days: DailySales[]
+  days: ApiDaily[]
   /** Period caption next to the title, e.g. "Last 7 days". */
   caption: string
 }
 
 function dayLabel(iso: string, long = false) {
-  return new Date(`${iso}T12:00`).toLocaleDateString('en-GB', long ? { weekday: 'short', day: 'numeric', month: 'short' } : { weekday: 'short' })
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', long ? { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Accra' } : { weekday: 'short', timeZone: 'Africa/Accra' })
 }
 
 /**
@@ -20,9 +20,10 @@ function dayLabel(iso: string, long = false) {
 export function SalesChart({ days, caption }: SalesChartProps) {
   const [active, setActive] = useState<number | null>(null)
   const [asTable, setAsTable] = useState(false)
-  const max = Math.max(...days.map((d) => d.online + d.walkIn))
-  // Round the axis top up to a tidy number so the gridline labels read cleanly.
-  const top = Math.ceil(max / 50) * 50
+  const max = Math.max(0, ...days.map((d) => d.online + d.walkIn))
+  // Round the axis top up to a tidy number so the gridline labels read cleanly
+  // (and never 0, so an empty week still draws)
+  const top = Math.max(10, Math.ceil(max / (max > 50 ? 50 : 10)) * (max > 50 ? 50 : 10))
   const many = days.length > 10
 
   return (
