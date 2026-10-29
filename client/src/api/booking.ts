@@ -22,6 +22,8 @@ export interface ApiHold {
   /** GET /holds/:id only. */
   status?: 'HELD' | 'PENDING_PAYMENT' | 'CONFIRMED' | 'EXPIRED' | 'CANCELLED' | string
   secondsLeft?: number
+  /** GET /holds/:id only: the latest payment attempt, if any. */
+  payment?: { id: string; status: string } | null
 }
 
 /** Holds these seats together. `holdToken`: the caller's current hold on the trip, which this replaces. */
@@ -83,14 +85,12 @@ export interface ApiPayment {
 
 export const SETTLED: ApiPaymentStatus[] = ['SUCCESS', 'FAILED', 'ABANDONED']
 
-export function payHold(holdId: string, holdToken: string, body: PayRequest) {
-  return api<ApiPayment>(`/holds/${holdId}/pay`, {
-    method: 'POST',
-    body,
-    holdToken,
-    // A double tap or a retried request returns the same payment
-    idempotencyKey: newIdempotencyKey(),
-  })
+/**
+ * Starts paying. `idempotencyKey` stays the same for every retry of one
+ * attempt, so a request resent after a lost reply never charges twice.
+ */
+export function payHold(holdId: string, holdToken: string, body: PayRequest, idempotencyKey = newIdempotencyKey()) {
+  return api<ApiPayment>(`/holds/${holdId}/pay`, { method: 'POST', body, holdToken, idempotencyKey })
 }
 
 export function getPayment(paymentId: string, holdToken?: string | null) {

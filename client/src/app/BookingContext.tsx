@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   createHold,
   getHold,
+  getPayment,
   payHold,
   releaseHold,
   type ApiMomoNetwork,
@@ -10,7 +11,7 @@ import {
   type ApiPayment,
 } from '@/api/booking'
 import { catalogKeys } from '@/api/catalog'
-import { isApiError } from '@/api/client'
+import { isApiError, isNetworkError, newIdempotencyKey } from '@/api/client'
 import type { MomoNetwork, PaymentMethod } from '@/data/types'
 import { bySeat } from '@/lib/format'
 import { MAX_SEATS } from '@/lib/seats'
@@ -236,13 +237,29 @@ export function BookingProvider({ children }: { children: ReactNode }) {
 
   const pay = useCallback(async () => {
     const s = latest.current
-    if (!s.hold) throw new Error('No seats are held')
-    const payment = await payHold(s.hold.holdId, s.hold.holdToken, {
-      method: s.method === 'momo' ? 'MOMO' : 'CARD',
-      ...(s.method === 'momo' && { phone: s.phone, network: NETWORKS[s.network] }),
-      contactEmail: s.email.trim(),
-      passengerName: s.name.trim() || undefined,
-    })
+    const hold = s.hold
+    if (!hold) throw new Error('No seats are held')
+    let payment: ApiPayment
+    try {
+      payment = await payHold(
+        hold.holdId,
+        hold.holdToken,
+        {
+          method: s.method === 'momo' ? 'MOMO' : 'CARD',
+          ...(s.method === 'momo' && { phone: s.phone, network: NETWORKS[s.network] }),
+          contactEmail: s.email.trim(),
+          passengerName: s.name.trim() || undefined,
+        },
+        newIdempotencyKey(),
+      )
+    } catch (error) {
+      // The reply never arrived, even after retries. The payment may well have
+      // started (or finished): the hold knows, so pick it up from there.
+      if (!isNetworkError(error)) throw error
+      const fresh = await getHold(hold.holdId, hold.holdToken).catch(() => null)
+      if (!fresh?.payment) throw error
+      payment = await getPayment(fresh.payment.id, hold.holdToken)
+    }
     setState((st) => ({ ...st, paymentId: payment.paymentId }))
     return payment
   }, [])
