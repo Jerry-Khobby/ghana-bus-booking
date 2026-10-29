@@ -30,9 +30,12 @@ import { PAYMENT_PROVIDER } from './providers/payment-provider.js';
               'Set PAYSTACK_SECRET_KEY (an sk_test_ key) in .env',
             );
           }
+          // Where Paystack sends a card payer back: the web app's return page
+          const web = process.env.WEB_URL?.trim().replace(/\/$/, '');
           return new PaystackProvider(
             secretKey,
-            process.env.PAYSTACK_CALLBACK_URL,
+            process.env.PAYSTACK_CALLBACK_URL ??
+              (web ? `${web}/payment/return` : undefined),
           );
         }
         // Automated tests only: never calls Paystack
