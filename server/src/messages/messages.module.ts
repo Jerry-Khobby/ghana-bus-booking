@@ -1,6 +1,7 @@
 import { Logger, Module } from '@nestjs/common';
 import { TicketsModule } from '../tickets/tickets.module.js';
 import { MAILER } from './mailer.js';
+import { BrevoMailer } from './mailers/brevo.mailer.js';
 import { GmailMailer } from './mailers/gmail.mailer.js';
 import { LogMailer } from './mailers/log.mailer.js';
 import { MessagesService } from './messages.service.js';
@@ -18,6 +19,17 @@ import { LogSmsProvider, SMS_PROVIDER } from './sms.js';
       provide: MAILER,
       useFactory: () => {
         const provider = process.env.MAIL_PROVIDER ?? 'log';
+        // Over HTTPS: works where SMTP is blocked (Render's free plan)
+        if (provider === 'brevo') {
+          const key = process.env.BREVO_API_KEY?.trim();
+          const from = process.env.MAIL_FROM?.trim();
+          if (!key || !from) {
+            throw new Error(
+              'MAIL_PROVIDER=brevo needs BREVO_API_KEY and MAIL_FROM',
+            );
+          }
+          return new BrevoMailer(key, from);
+        }
         if (provider === 'gmail') {
           const user = process.env.GMAIL_USER?.trim();
           const password = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, '');

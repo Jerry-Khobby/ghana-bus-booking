@@ -119,8 +119,15 @@ starting.
 2. **Render.** *New → Blueprint*, pick this repository. Render reads
    `render.yaml`, generates the signing secrets, and asks for the rest:
    `DATABASE_URL`, `DIRECT_URL`, `WEB_URL` (the web app's address),
-   `PAYSTACK_SECRET_KEY` (an `sk_test_` key), `GMAIL_USER` and
-   `GMAIL_APP_PASSWORD`. It deploys when GitHub's checks pass.
+   `PAYSTACK_SECRET_KEY` (an `sk_test_` key), `BREVO_API_KEY` and `MAIL_FROM`.
+   It deploys when GitHub's checks pass.
+
+   **Email:** Render's free plan blocks SMTP, so Gmail can't send from there.
+   Email goes through [Brevo](https://www.brevo.com) over HTTPS instead (free,
+   300 a day): create an account, verify your sender address under
+   *Senders, domains & IPs* (a Gmail address is fine), create a key under
+   *SMTP & API → API keys*, and set `MAIL_FROM` to that sender, e.g.
+   `Seatline <you@gmail.com>`. Locally, `MAIL_PROVIDER=gmail` or `log` still works.
 3. **Check it.** `https://<your-service>.onrender.com/api/v1/health/ready`
    should answer `{"status":"ok","database":"up"}`.
 4. **Demo data (optional).** From your laptop, with Neon's direct URL:

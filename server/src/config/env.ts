@@ -63,10 +63,19 @@ export function checkEnv(env: Env): EnvReport {
     if (!/^[a-z]{16}$/i.test(password)) {
       errors.push('GMAIL_APP_PASSWORD must be the 16-letter app password');
     }
+  } else if (mail === 'brevo') {
+    if (!value('BREVO_API_KEY')) {
+      errors.push('BREVO_API_KEY is missing (Brevo → SMTP & API → API keys)');
+    }
+    if (!/S+@S+.S+/.test(value('MAIL_FROM') ?? '')) {
+      errors.push(
+        'MAIL_FROM must be a sender verified in Brevo, e.g. "Seatline <you@gmail.com>"',
+      );
+    }
   } else if (mail === 'log') {
     if (production) warnings.push('MAIL_PROVIDER=log: no email will be sent');
   } else {
-    errors.push(`MAIL_PROVIDER must be gmail or log, not "${mail}"`);
+    errors.push(`MAIL_PROVIDER must be brevo, gmail or log, not "${mail}"`);
   }
 
   const web = value('WEB_URL');

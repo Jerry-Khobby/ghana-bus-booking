@@ -49,9 +49,11 @@ services:
       - key: PAYSTACK_SECRET_KEY
         sync: false
 
+      # Render's free plan blocks SMTP, so email goes over HTTPS through Brevo
       - key: MAIL_PROVIDER
-        value: gmail
-      - key: GMAIL_USER
+        value: brevo
+      - key: BREVO_API_KEY
         sync: false
-      - key: GMAIL_APP_PASSWORD
+      # A sender verified in Brevo, e.g. "Seatline <you@gmail.com>"
+      - key: MAIL_FROM
         sync: false

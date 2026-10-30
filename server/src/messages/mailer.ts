@@ -1,4 +1,4 @@
-/** Injection token for the active mailer (MAIL_PROVIDER=log|gmail). */
+/** Injection token for the active mailer (MAIL_PROVIDER=log|gmail|brevo). */
 export const MAILER = Symbol('MAILER');
 
 export interface EmailMessage {
