@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import {
+  adminKeys,
   BUS_TYPE_NAMES,
   cancelTrip,
   createTrip,
@@ -15,7 +17,7 @@ import {
   type TripBody,
 } from '@/api/admin'
 import { hhmm } from '@/api/catalog'
-import { errorMessage } from '@/api/client'
+import { errorMessage, isApiError } from '@/api/client'
 import { useAuth } from '@/app/AuthContext'
 import { Button, Card, Heading, TextInput } from '@/components/atoms'
 import { FormField, LoadState, PageHeader } from '@/components/molecules'
@@ -23,7 +25,6 @@ import { TripForm, TripFormActions, TripPreview, type TripDraft } from '@/compon
 import { isoDate } from '@/components/organisms/SearchForm'
 import { OperatorTemplate } from '@/components/templates'
 import { cedis } from '@/lib/format'
-import { NotFoundPage } from '../NotFoundPage'
 
 const shortType: Record<string, string> = { AC_COACH: 'AC coach', STANDARD: 'Standard', MINIBUS: 'Minibus' }
 
@@ -55,12 +56,19 @@ function TripEditorData({ tripId }: { tripId: string | undefined }) {
   const queries = [routes, buses, bays, ...(tripId ? [trip] : [])]
   const failed = queries.find((q) => q.isError)
 
-  if (tripId && trip.isError) return <NotFoundPage title="We could not find that trip" body={errorMessage(trip.error)} />
+  if (tripId && isApiError(trip.error, 'NOT_FOUND')) {
+    return <Locked title="We could not find that trip" body="It may belong to another operator, or the link is wrong." />
+  }
   if (!routes.data || !buses.data || !bays.data || (tripId && !trip.data)) {
     return <LoadState pending={!failed} error={failed?.error} onRetry={() => queries.forEach((q) => void q.refetch())} label="Loading the timetable…" />
   }
   if (trip.data && !trip.data.editable) {
-    return <NotFoundPage title="This trip can no longer be edited" body="Departed, full and cancelled trips are locked. Pick an open trip from the Trips page." />
+    return (
+      <Locked
+        title="This trip can no longer be edited"
+        body={`${trip.data.status === 'CANCELLED' ? 'It was cancelled.' : 'Departed and full trips are locked.'} Pick an open trip from the Trips page.`}
+      />
+    )
   }
   if (!routes.data.length || !buses.data.some((b) => b.status === 'ACTIVE')) {
     return (
@@ -70,6 +78,22 @@ function TripEditorData({ tripId }: { tripId: string | undefined }) {
     )
   }
   return <TripEditor existing={trip.data} routes={routes.data} buses={buses.data} bays={bays.data} />
+}
+
+/** A dead end inside the dashboard (not the passenger site's not-found page). */
+function Locked({ title, body }: { title: string; body: string }) {
+  const navigate = useNavigate()
+  return (
+    <Card className="flex flex-col items-start gap-3">
+      <Heading as="h2" size="sm">
+        {title}
+      </Heading>
+      <p className="m-0 text-muted">{body}</p>
+      <Button variant="outline" onClick={() => navigate('/operator/trips')}>
+        Back to trips
+      </Button>
+    </Card>
+  )
 }
 
 function TripEditor({
@@ -185,7 +209,7 @@ function TripEditor({
 /** Takes a trip off: held seats are released, online buyers refunded, walk-ins listed for repaying. */
 function CancelTrip({ trip }: { trip: ApiAdminTrip }) {
   const navigate = useNavigate()
-  const refresh = useRefreshAdmin()
+  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -201,7 +225,9 @@ function CancelTrip({ trip }: { trip: ApiAdminTrip }) {
         cashToRepay: { code: string; seatLabel: string; amountPesewas: number }[]
       }
       setDone({ refunds: res.refundsPending, cash: res.cashToRepay })
-      await refresh()
+      // Every list, but not this trip: re-reading it now (cancelled, locked)
+      // would swap this summary, and the cash to repay, for "can't be edited"
+      await queryClient.invalidateQueries({ queryKey: adminKeys.all, predicate: (q) => q.queryKey[1] !== 'trip' })
     } catch (e) {
       setError(errorMessage(e))
     } finally {

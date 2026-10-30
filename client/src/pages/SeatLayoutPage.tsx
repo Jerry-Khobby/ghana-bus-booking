@@ -2,12 +2,11 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { createLayout, saveLayout, useLayout, useRefreshAdmin, type ApiLayout } from '@/api/admin'
 import { errorMessage, isApiError } from '@/api/client'
-import { Card } from '@/components/atoms'
+import { ButtonLink, Card } from '@/components/atoms'
 import { LoadState, PageHeader } from '@/components/molecules'
 import { LayoutActions, LayoutPreview, LayoutSettings } from '@/components/organisms'
 import { OperatorTemplate } from '@/components/templates'
 import { defaultLayout, fromCells, toCells } from '@/lib/seats'
-import { NotFoundPage } from './NotFoundPage'
 
 /** Edit a layout at /operator/layouts/:layoutId, or create one at /operator/layouts/new. */
 export function SeatLayoutPage() {
@@ -27,7 +26,15 @@ export function SeatLayoutPage() {
 function ExistingLayout({ id }: { id: string }) {
   const layout = useLayout(id)
   if (isApiError(layout.error, 'NOT_FOUND')) {
-    return <NotFoundPage title="We could not find that layout" body="It may have been archived. Pick one from Seat layouts." />
+    return (
+      <Card className="flex flex-col items-start gap-3">
+        <p className="m-0 font-semibold">We could not find that layout.</p>
+        <p className="m-0 text-muted">It may have been archived. Pick one from Seat layouts.</p>
+        <ButtonLink to="/operator/layouts" variant="outline">
+          Seat layouts
+        </ButtonLink>
+      </Card>
+    )
   }
   if (!layout.data) {
     return <LoadState pending={layout.isPending} error={layout.error} onRetry={() => void layout.refetch()} label="Loading the layout…" />
