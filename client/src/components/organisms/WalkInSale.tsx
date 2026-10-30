@@ -4,6 +4,7 @@ import { FormField, OptionTile, SegmentedControl } from '@/components/molecules'
 import type { WalkInPayment } from '@/app/StationContext'
 import type { MomoNetwork } from '@/data/types'
 import { cedis, cx } from '@/lib/format'
+import { TEST_MOMO, testMomoHint } from '@/lib/testMode'
 
 const networks: MomoNetwork[] = ['MTN', 'Telecel', 'AT']
 
@@ -140,19 +141,13 @@ export function WalkInForm({ freeSeats, fare, draft, onChange, onSubmit, errors 
               ))}
             </div>
           </fieldset>
-          <FormField id="wi-momo" label="Passenger's mobile money number" error={errors.momoPhone} hint={
-              <>
-                <span className="lg:hidden">The ticket is issued once the passenger approves the prompt.</span>
-                <span className="hidden lg:inline">The passenger approves the prompt on their phone. The ticket is issued once payment confirms.</span>
-              </>
-            }
-          >
+          <FormField id="wi-momo" label="Passenger's mobile money number" error={errors.momoPhone} hint={testMomoHint}>
             <TextInput
               id="wi-momo"
               type="tel"
               inputMode="tel"
               required
-              placeholder="024 000 0000"
+              placeholder={TEST_MOMO.number}
               className="font-mono"
               value={draft.momoPhone}
               onChange={(e) => set({ momoPhone: e.target.value })}

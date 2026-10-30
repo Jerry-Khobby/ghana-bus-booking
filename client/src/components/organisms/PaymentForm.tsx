@@ -3,6 +3,7 @@ import { Button, Eyebrow, TextInput } from '@/components/atoms'
 import { FormField, OptionTile, SegmentedControl } from '@/components/molecules'
 import type { MomoNetwork, PaymentMethod } from '@/data/types'
 import { cedis } from '@/lib/format'
+import { TEST_MOMO, testMomoHint } from '@/lib/testMode'
 
 const networks: MomoNetwork[] = ['MTN', 'Telecel', 'AT']
 
@@ -74,7 +75,7 @@ export function PaymentForm(props: PaymentFormProps) {
           <FormField
             id="phone"
             label="Mobile money number"
-            hint="You will get a prompt on this phone. Enter your PIN there to approve."
+            hint={testMomoHint}
             error={errors.phone}
           >
             <TextInput
@@ -82,7 +83,7 @@ export function PaymentForm(props: PaymentFormProps) {
               type="tel"
               inputMode="tel"
               autoComplete="tel"
-              placeholder="024 000 0000"
+              placeholder={TEST_MOMO.number}
               inputSize="lg"
               mono
               required

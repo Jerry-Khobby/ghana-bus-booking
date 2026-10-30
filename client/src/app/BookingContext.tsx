@@ -16,6 +16,7 @@ import type { MomoNetwork, PaymentMethod } from '@/data/types'
 import { bySeat } from '@/lib/format'
 import { MAX_SEATS } from '@/lib/seats'
 import { readStored, writeStored } from '@/lib/storage'
+import { TEST_MOMO } from '@/lib/testMode'
 
 /*
  * The passenger's booking. The server owns the seats: every pick or unpick
@@ -109,7 +110,7 @@ const initial = (): BookingState => {
     hold,
     paymentId: hold ? (saved?.paymentId ?? null) : null,
     method: 'momo',
-    network: 'MTN',
+    network: TEST_MOMO.network,
     phone: '',
     email: '',
     name: '',

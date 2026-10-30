@@ -13,6 +13,7 @@ import { WalkInActions, WalkInForm, WalkInPreview, type WalkInDraft, type WalkIn
 import { AgentTemplate } from '@/components/templates'
 import type { MomoNetwork } from '@/data/types'
 import { bySeat, plural } from '@/lib/format'
+import { TEST_MOMO } from '@/lib/testMode'
 
 const NETWORKS: Record<MomoNetwork, ApiMomoNetwork> = { MTN: 'MTN', Telecel: 'TELECEL', AT: 'AIRTELTIGO' }
 
@@ -36,7 +37,7 @@ function WalkIn() {
     phone: '',
     email: '',
     momoPhone: '',
-    network: 'MTN',
+    network: TEST_MOMO.network,
     payment: 'cash',
     print: true,
   })
