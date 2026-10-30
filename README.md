@@ -4,7 +4,7 @@ Book intercity bus seats in Ghana online: see which bus is loading, pick your se
 
 Passengers no longer have to travel to the station to find out which bus is loading or whether there is a seat left. Station agents sell walk-in seats and scan tickets from the same system, and bus operators manage trips, buses and seat layouts.
 
-> **Status:** the frontend (`client/`) is built from the design with mock data. The NestJS backend (`server/`) has not been started yet.
+> **Status:** the web app and the API are built and talk to each other end to end, in Paystack test mode. The API runs on Render with a Neon database; the web app deploys to Vercel.
 
 ## Design
 
@@ -61,10 +61,12 @@ All tokens live in [client/src/index.css](client/src/index.css) as a Tailwind `@
 
 | Part | Choice |
 | --- | --- |
-| Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, React Router 7 |
-| QR codes | `qrcode.react` |
-| Backend (planned) | NestJS, PostgreSQL with Prisma, Socket.IO (NestJS WebSocket gateway) for live seat updates |
-| Payments (planned) | Paystack (mobile money and card) |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, React Router 7, TanStack Query |
+| Backend | NestJS, PostgreSQL with Prisma ([server/README.md](server/README.md)) |
+| Live updates | Server-Sent Events: seat maps, payments and the agent console |
+| Payments | Paystack mobile money and card, in test mode |
+| QR codes | `qrcode.react` to draw tickets, the browser's detector or `jsqr` to scan them |
+| Hosting | Web app on Vercel, API on Render, database on Neon (all free plans) |
 
 ## Getting started
 
@@ -76,7 +78,7 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173>.
+Open <http://localhost:5173>. The dev server forwards `/api` to the deployed API, which has the demo data, so the frontend runs on its own. To use an API on your machine instead, run the server (see [server/README.md](server/README.md)) and put `VITE_API_PROXY=http://localhost:3000` in `client/.env.local`.
 
 Other scripts:
 
@@ -88,20 +90,19 @@ npm run typecheck  # types only
 
 ### Trying the flow
 
+The demo data is the bus company Coastline Express, loaded by `npm run db:seed` in `server/`. Its trips are dated the day the seed runs, so seed again for fresh ones.
+
 1. On the home page, choose how many **Passengers** (1–6) and press **Find buses**, or tap a bus under **Loading now**.
-2. On **GR 4471-24** (Accra → Kumasi, bay 6), pick free seats: one per passenger, up to 6 per booking. Tap a seat again to drop it. One 5-minute hold covers all the seats you pick, and it starts with the first one.
-3. Pay with any phone number, such as `024 000 0000`. The total is (fare + service fee) × seats.
-4. The next page asks you to approve the prompt on your phone. Payments are simulated: press **I have approved it** to get your tickets, or **It did not work** to see the failed-payment page. No money moves.
-5. You get one e-ticket per seat, each with its own scannable QR code. Each code works once at the bus door.
+2. Pick free seats on the live seat map, up to 6 per booking. They are held for you on the server for 5 minutes.
+3. Pay by mobile money with Paystack's test number: **MTN, 055 123 4987**. Test mode moves no money. For card, use Paystack's test card on their page.
+4. You get one e-ticket per seat, each with a signed QR code that works once at the bus door.
 
-Sign in at `/signin` with any 9-digit Ghana number and any 6-digit code. **My tickets** then shows the demo account's upcoming and past trips, plus anything you booked.
+Passengers sign in at `/signin` with an emailed 6-digit code. **My tickets** shows the account's tickets, or, signed out, the ones bought on this device.
 
-Buses with fewer free seats than your passenger count show **Not enough seats**.
+Staff sign in at `/staff/signin` with the password in `SEED_PASSWORD`:
 
-Staff sign in from the footer links (**Station agents**, **Operators**) with any email and a password of 6 or more characters.
-
-- **Agents** land on the loading console. They can switch bay, sell a walk-in seat (cash or mobile money), scan a ticket and mark the bus departed.
-- **Operators** land on the overview. The menu leads to Trips, Buses, Seat layouts, Routes and fares, Agents and Reports. Adding a bus, route, agent, layout or trip shows up in the lists straight away. Reports export a CSV.
+- **Agent** `kofi.a@coastline.example` lands on the loading console: pick a bay, sell walk-in seats (cash or mobile money), scan tickets with the camera or by code, and mark the bus departed.
+- **Operator** `admin@coastline.example` lands on the overview: trips, buses, seat layouts, routes and bays, agents and cash, and reports with a CSV export.
 
 ## Frontend structure (atomic design)
 
@@ -113,8 +114,9 @@ client/src/
 │   ├── organisms/    Page sections: SiteHeader, SearchForm, SeatMap, PaymentForm, TicketCard, PassengerSignIn, WalkInSale, TripForm, ResponsiveTable, FleetLists, SalesChart
 │   └── templates/    Page shells: PublicTemplate, BookingTemplate, AuthTemplate, AgentTemplate, OperatorTemplate, PassTemplate
 ├── pages/            Routes: templates filled with organisms and data (operator pages in pages/operator/)
-├── app/              Routes and app state: Auth, Booking, Station (agent) and Operator contexts
-├── data/             Shared types and mock data (stand-in for the API)
+├── api/              The API client, live streams, and one module per area (catalog, booking, agent, admin…)
+├── app/              Routes and app state: Auth, Booking and Station (agent) contexts
+├── data/             Shared view types
 ├── hooks/            useCountdown (seat hold timer)
 └── lib/              Formatting (cedis, labels) and seat-layout helpers
 ```
@@ -123,37 +125,47 @@ The rule: each layer imports only from the layers below it. Pages compose templa
 
 On phones the layout follows the phone artboards. The header collapses to a menu button, the seat page gets a sticky "Continue to payment" bar, and every operator table becomes a list of cards. Tablets get an icon rail for the operator menu.
 
-## What is mocked
+## Test mode
 
-Everything in [client/src/data/](client/src/data/) will come from the API:
+- Payments run on Paystack test keys: no real money moves.
+- Emails (sign-in codes, tickets, staff invites) can't leave the API on Render's free plan, which blocks SMTP. They wait in the outbox until an email service that works over HTTPS is set up.
+- SMS is not used; tickets and codes go by email.
 
-- Trips, seat counts, fares and the service fee are sample values, not real prices.
-- The seat hold timer runs in the browser. The server must own it, and hold all seats in a booking together, so two people cannot pay for the same seat.
-- Payment approval is a choice of two buttons in test mode. Paystack webhooks will replace this.
-- Sign-in accepts any number and code (passengers) or any email and password (staff). Nothing is checked or stored.
-- Operator changes (new trips, buses, routes, agents, layouts, fares) live in memory and reset on reload.
-- Report figures are generated sample data.
-- The scan screen shows a sample valid and rejected result. The camera is not connected yet.
-- Live updates are not wired up yet; "Updates live" labels mark where Socket.IO events will land.
+## Deploying the web app (Vercel)
+
+The API is deployed first: see [server/README.md](server/README.md). Then:
+
+1. On [vercel.com](https://vercel.com), **Add New → Project** and import this repository.
+2. Set **Root Directory** to `client`. Vercel reads `client/vercel.json`: a Vite build, and two rewrites, `/api/*` to the Render API and every other path to the app (so links like `/ticket/SL-…` work).
+3. Leave the environment variables empty: the app calls `/api` on its own site, which Vercel forwards to Render.
+4. Deploy, and note the address, e.g. `https://seatline.vercel.app`.
+5. In Render, set the API's environment so it knows the web app:
+   - `WEB_URL` = the Vercel address (ticket links, card payment returns and the sign-in origin check use it)
+   - `REFRESH_COOKIE_SAMESITE` = `lax` (the cookie is first-party now, which Safari needs)
+   - `TRUST_PROXY` = `2` (Vercel and Render are both in front, so rate limits see the real client)
+
+Because the browser only ever talks to the Vercel site, the sign-in cookie is first-party everywhere and no CORS setup is needed. Preview deployments get their own address; add any you want to sign in on to `CORS_ORIGINS` in Render.
 
 ## Roadmap
 
 - [x] Design: 22 screens, each for desktop, tablet and phone
-- [x] Frontend: all 22 screens, responsive, with mock data
-- [ ] API: trips, buses, seat layouts, bookings, tickets (NestJS + Prisma + PostgreSQL)
-- [ ] Seat holds with expiry on the server, and live seat updates over Socket.IO
-- [ ] Paystack mobile money and card payments, in test mode first
+- [x] Frontend: all 22 screens, responsive
+- [x] API: trips, buses, seat layouts, bookings, tickets, agents, reports (NestJS + Prisma + PostgreSQL)
+- [x] Seat holds on the server, up to 6 seats together, with live seat maps
+- [x] Paystack mobile money and card payments, in test mode
+- [x] Camera QR scanning for agents, with one-time boarding
+- [x] Sign-in: email codes for passengers, password accounts for staff
+- [x] Docker for the API; deployed on Render with Neon
+- [ ] Email delivery over HTTPS (Render's free plan blocks SMTP)
+- [ ] Screens for the platform admin (operators and shared stations)
 - [ ] SMS tickets
-- [ ] Camera QR scanning for agents, with one-time ticket check-in
-- [ ] Real sign-in: SMS codes for passengers, password accounts for staff
-- [ ] Docker setup (`Dockerfile` and `docker-compose.yml` are empty placeholders for now)
 
 ## Repository layout
 
 ```text
 .
-├── client/              React frontend
-├── server/              NestJS API (not started)
-├── Dockerfile           placeholder
-└── docker-compose.yml   placeholder
+├── client/        React web app (deployed on Vercel)
+├── server/        NestJS API (deployed on Render with Neon)
+├── render.yaml    Render blueprint for the API
+└── .github/       CI for the API, and the 30-minute tick
 ```
