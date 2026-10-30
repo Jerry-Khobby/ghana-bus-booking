@@ -37,6 +37,24 @@ describe('checkEnv', () => {
     ]);
   });
 
+  it('accepts Brevo with a named sender, and needs its key and address', () => {
+    const brevo = {
+      ...good,
+      NODE_ENV: 'production',
+      MAIL_PROVIDER: 'brevo',
+      BREVO_API_KEY: 'xkeysib-abc',
+      MAIL_FROM: 'Seatline <seatline@gmail.com>',
+    };
+    expect(checkEnv(brevo).errors).toEqual([]);
+    expect(
+      checkEnv({ ...brevo, MAIL_FROM: 'seatline@gmail.com' }).errors,
+    ).toEqual([]);
+    expect(
+      checkEnv({ ...brevo, BREVO_API_KEY: undefined, MAIL_FROM: 'Seatline' })
+        .errors,
+    ).toHaveLength(2);
+  });
+
   it('is stricter in production', () => {
     const { errors } = checkEnv({
       ...good,

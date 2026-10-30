@@ -67,7 +67,7 @@ export function checkEnv(env: Env): EnvReport {
     if (!value('BREVO_API_KEY')) {
       errors.push('BREVO_API_KEY is missing (Brevo → SMTP & API → API keys)');
     }
-    if (!/S+@S+.S+/.test(value('MAIL_FROM') ?? '')) {
+    if (!/\S+@\S+\.\S+/.test(value('MAIL_FROM') ?? '')) {
       errors.push(
         'MAIL_FROM must be a sender verified in Brevo, e.g. "Seatline <you@gmail.com>"',
       );
