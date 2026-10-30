@@ -29,7 +29,9 @@ export class CatalogController {
 
   /** Home: the From / To pickers. */
   @Get('stations')
-  @Header('Cache-Control', 'public, max-age=600')
+  // Only the browser may keep it: a shared cache (Vercel's edge) would
+  // serve an old list after stations change, and ids change on a re-seed
+  @Header('Cache-Control', 'private, max-age=600')
   listStations(@Query() query: StationsQueryDto) {
     return this.catalogService.listStations(query);
   }
