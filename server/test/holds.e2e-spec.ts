@@ -148,10 +148,31 @@ describe('Holds (e2e)', () => {
         departureAt: minutesFromNow(-5),
       });
 
-      for (const trip of [departed, closed, overdue]) {
+      // Fill-and-go buses past their leave-by deadline: one still loading, one
+      // so late the read itself marks it departed
+      const pastLeaveBy = await fx.createTrip({
+        mode: 'WHEN_FULL',
+        status: 'LOADING',
+        loadingStartsAt: minutesFromNow(-180),
+        leaveBy: minutesFromNow(-10),
+      });
+      const longGone = await fx.createTrip({
+        mode: 'WHEN_FULL',
+        status: 'LOADING',
+        loadingStartsAt: minutesFromNow(-300),
+        leaveBy: minutesFromNow(-120),
+      });
+
+      for (const trip of [departed, closed, overdue, pastLeaveBy, longGone]) {
         const res = await hold(trip.id, '1').expect(409);
         expect(res.body.error.code).toBe('TRIP_NOT_BOOKABLE');
       }
+      expect(
+        await prisma.trip.findUnique({
+          where: { id: longGone.id },
+          select: { status: true },
+        }),
+      ).toEqual({ status: 'DEPARTED' });
       const missing = await hold(
         '0199f5b2-3c4d-7e8f-9a0b-1c2d3e4f5a6b',
         '1',

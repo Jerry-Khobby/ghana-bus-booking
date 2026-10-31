@@ -81,6 +81,7 @@ const nextTripSelect = {
   mode: true,
   departureAt: true,
   loadingStartsAt: true,
+  leaveBy: true,
 } satisfies Prisma.TripSelect;
 
 const QUEUE_LENGTH = 3;
@@ -469,6 +470,7 @@ export class AgentService {
         mode: true,
         loadingStartsAt: true,
         departureAt: true,
+        leaveBy: true,
       },
     });
     for (const trip of trips.filter((t) => isStatusStale(t, now))) {

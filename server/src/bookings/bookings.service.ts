@@ -5,7 +5,6 @@ import type { Prisma } from '../generated/prisma/client.js';
 import {
   BookingChannel,
   BookingStatus,
-  DepartureMode,
   OperatorStatus,
   SeatStatus,
   TripStatus,
@@ -13,7 +12,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { availableSeatWhere } from '../trips/trip-seats.js';
-import { TripsService } from '../trips/trips.service.js';
+import { leavesAt, TripsService } from '../trips/trips.service.js';
 import { CreateHoldDto } from './dto/create-hold.dto.js';
 import { createHoldToken, hashHoldToken } from './hold-token.js';
 import { generateTicketCode } from './ticket-code.js';
@@ -123,6 +122,7 @@ export class BookingsService {
         onlineBookingOpen: true,
         mode: true,
         departureAt: true,
+        leaveBy: true,
         farePesewas: true,
         operatorId: true,
         operator: {
@@ -138,11 +138,9 @@ export class BookingsService {
       );
     }
     // A stored status can lag (a trip waiting for a busy bay never loads), so
-    // a fixed departure time that has passed also closes online sales
-    const leftAlready =
-      trip.mode === DepartureMode.FIXED_TIME &&
-      !!trip.departureAt &&
-      trip.departureAt <= now;
+    // a departure time or leave-by deadline that has passed also closes sales
+    const leaves = leavesAt(trip);
+    const leftAlready = !!leaves && leaves <= now;
     const bookable =
       (trip.status === TripStatus.SCHEDULED ||
         trip.status === TripStatus.LOADING) &&

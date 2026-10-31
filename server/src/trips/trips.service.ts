@@ -14,14 +14,44 @@ export const DEPARTURE_GRACE_MS = 30 * 60 * 1000;
 
 type Db = PrismaService | Prisma.TransactionClient;
 
+type TripClock = {
+  mode: DepartureMode;
+  departureAt: Date | null;
+  leaveBy: Date | null;
+};
+
+/**
+ * When the trip goes by the clock: a fixed-time trip at its departure time, a
+ * fill-and-go trip at its leave-by deadline. Online sales stop here.
+ */
+export function leavesAt(trip: TripClock): Date | null {
+  return trip.mode === DepartureMode.FIXED_TIME
+    ? trip.departureAt
+    : trip.leaveBy;
+}
+
+/** Trips that haven't reached leavesAt yet, for lists passengers book from. */
+export function notLeftYet(now: Date): Prisma.TripWhereInput {
+  return {
+    OR: [
+      { mode: DepartureMode.FIXED_TIME, departureAt: { gt: now } },
+      {
+        mode: DepartureMode.WHEN_FULL,
+        OR: [{ leaveBy: null }, { leaveBy: { gt: now } }],
+      },
+    ],
+  };
+}
+
+/** A loading trip this long past leavesAt has left, agent or not. */
+function departureDue(trip: TripClock, now: Date): boolean {
+  const at = leavesAt(trip);
+  return !!at && at.getTime() + DEPARTURE_GRACE_MS <= now.getTime();
+}
+
 /** True when the clock says this trip's stored status is out of date. */
 export function isStatusStale(
-  trip: {
-    status: TripStatus;
-    mode: DepartureMode;
-    loadingStartsAt: Date | null;
-    departureAt: Date | null;
-  },
+  trip: TripClock & { status: TripStatus; loadingStartsAt: Date | null },
   now: Date,
 ): boolean {
   if (trip.status === TripStatus.SCHEDULED) {
@@ -29,9 +59,7 @@ export function isStatusStale(
   }
   return (
     (trip.status === TripStatus.LOADING || trip.status === TripStatus.FULL) &&
-    trip.mode === DepartureMode.FIXED_TIME &&
-    !!trip.departureAt &&
-    trip.departureAt.getTime() + DEPARTURE_GRACE_MS <= now.getTime()
+    departureDue(trip, now)
   );
 }
 
@@ -57,6 +85,7 @@ export class TripsService {
         bayId: true,
         loadingStartsAt: true,
         departureAt: true,
+        leaveBy: true,
       },
     });
     if (!trip) return;
@@ -87,17 +116,14 @@ export class TripsService {
       }
     }
 
-    // LOADING or FULL → DEPARTED, 30 minutes after a fixed departure time
-    const departed =
-      trip.mode === DepartureMode.FIXED_TIME &&
-      trip.departureAt &&
-      trip.departureAt.getTime() + DEPARTURE_GRACE_MS <= now.getTime();
+    // LOADING or FULL → DEPARTED, 30 minutes after the departure time or the
+    // leave-by deadline, for when no agent pressed Depart
     if (
-      departed &&
+      departureDue(trip, now) &&
       (status === TripStatus.LOADING || status === TripStatus.FULL)
     ) {
       const left = await this.prisma.$transaction((tx) =>
-        this.depart(tx, tripId, trip.departureAt!),
+        this.depart(tx, tripId, leavesAt(trip)!),
       );
       if (left) this.realtime.tripChanged(tripId);
     }

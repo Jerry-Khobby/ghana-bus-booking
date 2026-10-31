@@ -18,7 +18,11 @@ import {
   buildSeatMap,
   type LayoutSnapshot,
 } from '../trips/trip-seats.js';
-import { isStatusStale, TripsService } from '../trips/trips.service.js';
+import {
+  isStatusStale,
+  notLeftYet,
+  TripsService,
+} from '../trips/trips.service.js';
 import { LoadingNowQueryDto } from './dto/loading-now-query.dto.js';
 import { SearchTripsQueryDto } from './dto/search-trips-query.dto.js';
 import { StationsQueryDto } from './dto/stations-query.dto.js';
@@ -146,9 +150,15 @@ export class CatalogService {
       ...(query.busType?.length && {
         bus: { type: { in: query.busType } },
       }),
-      OR: [
-        { mode: DepartureMode.FIXED_TIME, departureAt: inWindow },
-        { mode: DepartureMode.WHEN_FULL, loadingStartsAt: inWindow },
+      AND: [
+        {
+          OR: [
+            { mode: DepartureMode.FIXED_TIME, departureAt: inWindow },
+            { mode: DepartureMode.WHEN_FULL, loadingStartsAt: inWindow },
+          ],
+        },
+        // A bus that has gone can't be booked, whatever its stored status
+        notLeftYet(now),
       ],
     };
     let trips = await this.prisma.trip.findMany({
@@ -197,15 +207,20 @@ export class CatalogService {
     };
     const where: Prisma.TripWhereInput = {
       ...base,
-      OR: [
-        { status: TripStatus.LOADING },
+      AND: [
         {
-          status: TripStatus.SCHEDULED,
           OR: [
-            { mode: DepartureMode.FIXED_TIME, departureAt: rest },
-            { mode: DepartureMode.WHEN_FULL, loadingStartsAt: rest },
+            { status: TripStatus.LOADING },
+            {
+              status: TripStatus.SCHEDULED,
+              OR: [
+                { mode: DepartureMode.FIXED_TIME, departureAt: rest },
+                { mode: DepartureMode.WHEN_FULL, loadingStartsAt: rest },
+              ],
+            },
           ],
         },
+        notLeftYet(now),
       ],
     };
     const read = () =>

@@ -193,6 +193,37 @@ describe('Catalog (e2e)', () => {
       });
     });
 
+    it('leaves out buses whose departure time or leave-by deadline has passed', async () => {
+      // Stored statuses that lag the clock: a bay that never freed up, and a
+      // fill-and-go bus no agent departed
+      const overdue = await fx.createTrip({
+        loadingStartsAt: minutesFromNow(-90),
+        departureAt: minutesFromNow(-5),
+      });
+      const pastLeaveBy = await fx.createTrip({
+        mode: 'WHEN_FULL',
+        status: 'LOADING',
+        loadingStartsAt: minutesFromNow(-180),
+        leaveBy: minutesFromNow(-10),
+      });
+      const gone = [overdue.id, pastLeaveBy.id];
+
+      const loading = await request(app.getHttpServer())
+        .get('/api/v1/trips/loading-now')
+        .query({ from: ids.origin })
+        .expect(200);
+      const today = await search({ date: isoDay(0) }).expect(200);
+
+      for (const res of [loading, today]) {
+        const listed = res.body.map((t: { id: string }) => t.id);
+        expect(listed.filter((id: string) => gone.includes(id))).toEqual([]);
+      }
+      await prisma.trip.updateMany({
+        where: { id: { in: gone } },
+        data: { status: 'DEPARTED' },
+      });
+    });
+
     it('rejects a station id that is not a uuid', async () => {
       await request(app.getHttpServer())
         .get('/api/v1/trips/loading-now')

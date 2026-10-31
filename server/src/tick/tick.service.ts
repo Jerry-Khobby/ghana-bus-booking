@@ -76,6 +76,7 @@ export class TickService {
         mode: true,
         loadingStartsAt: true,
         departureAt: true,
+        leaveBy: true,
       },
     });
     let updated = 0;
