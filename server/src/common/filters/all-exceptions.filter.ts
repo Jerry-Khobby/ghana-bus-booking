@@ -22,6 +22,25 @@ const CODE_BY_STATUS: Partial<Record<number, ErrorCode>> = {
 };
 
 /**
+ * Express's body parser rejects a body that is too large (or in a charset it
+ * can't read) with a plain Error carrying its own 4xx `status`; `expose` marks
+ * the message as safe to show.
+ */
+function bodyParserStatus(exception: unknown): number | undefined {
+  if (!(exception instanceof Error)) return undefined;
+  const { status, expose } = exception as Error & {
+    status?: unknown;
+    expose?: unknown;
+  };
+  return expose === true &&
+    typeof status === 'number' &&
+    status >= 400 &&
+    status < 500
+    ? status
+    : undefined;
+}
+
+/**
  * Turns every error into the one shape the frontend handles:
  * `{ "error": { "code": "SEAT_TAKEN", "message": "...", "details": {} } }`.
  * Anything that isn't an HttpException is a bug: it's logged and the client
@@ -37,10 +56,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const { httpAdapter } = this.httpAdapterHost;
     const ctx = host.switchToHttp();
 
+    const parserStatus =
+      exception instanceof HttpException
+        ? undefined
+        : bodyParserStatus(exception);
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+        : (parserStatus ?? HttpStatus.INTERNAL_SERVER_ERROR);
 
     let code: ErrorCode;
     let message: string;
@@ -52,6 +75,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
     } else if (exception instanceof HttpException && status < 500) {
       code = CODE_BY_STATUS[status] ?? 'VALIDATION_FAILED';
       message = exception.message;
+    } else if (parserStatus) {
+      code = CODE_BY_STATUS[status] ?? 'VALIDATION_FAILED';
+      message =
+        status === HttpStatus.PAYLOAD_TOO_LARGE
+          ? 'That request is too large.'
+          : (exception as Error).message;
     } else {
       code = 'INTERNAL';
       message = 'Something went wrong. Please try again.';

@@ -48,6 +48,18 @@ describe('Health (e2e)', () => {
       });
   });
 
+  it('refuses a body over the size limit with a 413, not a server error', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/holds')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ pad: 'x'.repeat(200_000) }))
+      .expect(413);
+    expect(res.body.error).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      message: 'That request is too large.',
+    });
+  });
+
   afterEach(async () => {
     await app.close();
   });
