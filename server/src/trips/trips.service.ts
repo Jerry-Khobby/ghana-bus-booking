@@ -97,13 +97,21 @@ export class TripsService {
       trip.loadingStartsAt &&
       trip.loadingStartsAt <= now
     ) {
-      const bayBusy = await this.prisma.trip.count({
-        where: {
-          bayId: trip.bayId,
-          id: { not: tripId },
-          status: { in: [TripStatus.LOADING, TripStatus.FULL] },
-        },
+      const atBay = {
+        bayId: trip.bayId,
+        id: { not: tripId },
+        status: { in: [TripStatus.LOADING, TripStatus.FULL] },
+      };
+      // A bus still marked loading here may have left by the clock; lists
+      // hide such buses, so nothing else might ever read and depart them
+      const loadingHere = await this.prisma.trip.findMany({
+        where: atBay,
+        select: { id: true, mode: true, departureAt: true, leaveBy: true },
       });
+      for (const other of loadingHere) {
+        if (departureDue(other, now)) await this.refreshStatus(other.id, now);
+      }
+      const bayBusy = await this.prisma.trip.count({ where: atBay });
       if (!bayBusy) {
         const { count } = await this.prisma.trip.updateMany({
           where: { id: tripId, status: TripStatus.SCHEDULED },

@@ -180,6 +180,37 @@ describe('Holds (e2e)', () => {
       expect(missing.body.error.code).toBe('NOT_FOUND');
     });
 
+    it('departs an overdue bus still marked loading so the next one can load', async () => {
+      const stuck = await fx.createTrip({
+        bayId: fx.bays[1].id,
+        mode: 'WHEN_FULL',
+        status: 'LOADING',
+        loadingStartsAt: minutesFromNow(-300),
+        leaveBy: minutesFromNow(-120),
+      });
+      const next = await fx.createTrip({
+        bayId: fx.bays[1].id,
+        loadingStartsAt: minutesFromNow(-5),
+        departureAt: minutesFromNow(60),
+      });
+
+      await hold(next.id, '1').expect(201);
+      const statuses = await prisma.trip.findMany({
+        where: { id: { in: [stuck.id, next.id] } },
+        select: { id: true, status: true },
+      });
+      expect(Object.fromEntries(statuses.map((t) => [t.id, t.status]))).toEqual(
+        {
+          [stuck.id]: 'DEPARTED',
+          [next.id]: 'LOADING',
+        },
+      );
+      await prisma.trip.updateMany({
+        where: { id: next.id },
+        data: { status: 'DEPARTED' },
+      });
+    });
+
     it('rejects unknown seats and bad bodies', async () => {
       const trip = await openTrip();
       const seat = await hold(trip.id, '99').expect(404);
