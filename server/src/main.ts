@@ -4,11 +4,17 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule, ObserveInstrument } from './app.module.js';
 import { assertEnv } from './config/env.js';
-import { allowedOrigins, trustedProxies } from './config/origins.js';
+import {
+  allowedOrigins,
+  clientIpFrom,
+  clientIpHeaders,
+  trustedProxies,
+} from './config/origins.js';
 
 async function bootstrap() {
   // A missing secret or key stops the boot here, with the full list
@@ -29,10 +35,20 @@ async function bootstrap() {
   // The refresh token arrives in a cookie
   app.use(cookieParser());
 
-  // Render (and most hosts) put one proxy in front: trust it for the real IP,
-  // which rate limits and OTP limits count by
+  // Rate limits, OTP limits and the audit log all read req.ip. With a fixed
+  // chain of proxies, counting hops finds the visitor; behind Vercel and
+  // Render's Cloudflare, headers they set name the visitor instead.
   const proxies = trustedProxies();
   if (proxies) app.set('trust proxy', proxies);
+  const ipHeaders = clientIpHeaders();
+  if (ipHeaders.length) {
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      const ip = clientIpFrom(req.headers, ipHeaders);
+      if (ip)
+        Object.defineProperty(req, 'ip', { value: ip, configurable: true });
+      next();
+    });
+  }
 
   app.use(
     helmet({

@@ -142,7 +142,7 @@ The API is deployed first: see [server/README.md](server/README.md). Then:
 5. In Render, set the API's environment so it knows the web app:
    - `WEB_URL` = the Vercel address (ticket links, card payment returns and the sign-in origin check use it)
    - `REFRESH_COOKIE_SAMESITE` = `lax` (the cookie is first-party now, which Safari needs)
-   - `TRUST_PROXY` = `2` (Vercel and Render are both in front, so rate limits see the real client)
+   - `CLIENT_IP_HEADERS` = `x-vercel-forwarded-for,cf-connecting-ip` (Vercel and Render's Cloudflare are in front; these headers name the visitor, so rate limits count per person)
 
 Because the browser only ever talks to the Vercel site, the sign-in cookie is first-party everywhere and no CORS setup is needed. Preview deployments get their own address; add any you want to sign in on to `CORS_ORIGINS` in Render.
 

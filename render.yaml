@@ -49,6 +49,11 @@ services:
       - key: PAYSTACK_SECRET_KEY
         sync: false
 
+      # Who the visitor is, for rate limits: Vercel names them when it forwards
+      # /api, and Render's Cloudflare names whoever reached it
+      - key: CLIENT_IP_HEADERS
+        value: x-vercel-forwarded-for,cf-connecting-ip
+
       # Render's free plan blocks SMTP, so email goes over HTTPS through Brevo
       - key: MAIL_PROVIDER
         value: brevo
