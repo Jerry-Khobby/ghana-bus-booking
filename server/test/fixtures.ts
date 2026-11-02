@@ -33,6 +33,16 @@ export function isoDay(daysFromToday: number) {
 export const minutesFromNow = (minutes: number) =>
   new Date(Date.now() + minutes * 60_000);
 
+/**
+ * True when fewer than this many minutes are left today (UTC). Tests about
+ * buses "later today" can't make one in the last minutes before midnight.
+ */
+export function nearMidnight(minutes: number) {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const left = dayMs - (Date.now() % dayMs);
+  return left < minutes * 60_000;
+}
+
 // A tiny 2 × 3 bus: seats 1 and 2 at the front, 3 and 4 behind, aisle between
 export const CELLS: LayoutCell[] = [
   { r: 0, c: 0, type: 'SEAT', label: '1' },

@@ -7,6 +7,7 @@ import {
   createFixture,
   createTestApp,
   minutesFromNow,
+  nearMidnight,
   type Fixture,
 } from './fixtures.js';
 
@@ -387,36 +388,40 @@ describe('Agent console (e2e)', () => {
   });
 
   describe('bay queue', () => {
-    it('lists the next buses at the bay with what has sold', async () => {
-      await bay2Trip();
-      const first = await fx.createTrip({
-        bayId: fx.bays[1].id,
-        loadingStartsAt: minutesFromNow(20),
-        departureAt: minutesFromNow(30),
-      });
-      const second = await fx.createTrip({
-        bayId: fx.bays[1].id,
-        loadingStartsAt: minutesFromNow(25),
-        departureAt: minutesFromNow(35),
-      });
-      await fx.createBooking(first.id, '2', 'CONFIRMED');
+    // Its buses leave later today, which near midnight would be tomorrow
+    it.skipIf(nearMidnight(45))(
+      'lists the next buses at the bay with what has sold',
+      async () => {
+        await bay2Trip();
+        const first = await fx.createTrip({
+          bayId: fx.bays[1].id,
+          loadingStartsAt: minutesFromNow(20),
+          departureAt: minutesFromNow(30),
+        });
+        const second = await fx.createTrip({
+          bayId: fx.bays[1].id,
+          loadingStartsAt: minutesFromNow(25),
+          departureAt: minutesFromNow(35),
+        });
+        await fx.createBooking(first.id, '2', 'CONFIRMED');
 
-      const res = await get(
-        admin,
-        `/agent/console?bayId=${fx.bays[1].id}`,
-      ).expect(200);
-      expect(res.body.queue.slice(0, 2)).toMatchObject([
-        {
-          id: first.id,
-          status: 'SCHEDULED',
-          plate: expect.any(String),
-          destination: { name: 'South' },
-          counts: { total: 4, sold: 1, online: 1, walkIn: 0 },
-        },
-        { id: second.id, counts: { sold: 0 } },
-      ]);
-      expect(res.body.nextTrip).toMatchObject({ id: first.id });
-    });
+        const res = await get(
+          admin,
+          `/agent/console?bayId=${fx.bays[1].id}`,
+        ).expect(200);
+        expect(res.body.queue.slice(0, 2)).toMatchObject([
+          {
+            id: first.id,
+            status: 'SCHEDULED',
+            plate: expect.any(String),
+            destination: { name: 'South' },
+            counts: { total: 4, sold: 1, online: 1, walkIn: 0 },
+          },
+          { id: second.id, counts: { sold: 0 } },
+        ]);
+        expect(res.body.nextTrip).toMatchObject({ id: first.id });
+      },
+    );
   });
 
   describe('access', () => {

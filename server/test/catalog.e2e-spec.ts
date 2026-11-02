@@ -7,6 +7,7 @@ import {
   createTestApp,
   isoDay,
   minutesFromNow,
+  nearMidnight,
   type Fixture,
 } from './fixtures.js';
 
@@ -168,30 +169,34 @@ describe('Catalog (e2e)', () => {
   });
 
   describe('GET /trips/loading-now', () => {
-    it('lists loading buses, then the next to leave today, with destinations', async () => {
-      const soon = await fx.createTrip({
-        loadingStartsAt: minutesFromNow(15),
-        departureAt: minutesFromNow(30),
-      });
+    // Its buses leave later today, which near midnight would be tomorrow
+    it.skipIf(nearMidnight(45))(
+      'lists loading buses, then the next to leave today, with destinations',
+      async () => {
+        const soon = await fx.createTrip({
+          loadingStartsAt: minutesFromNow(15),
+          departureAt: minutesFromNow(30),
+        });
 
-      const res = await request(app.getHttpServer())
-        .get('/api/v1/trips/loading-now')
-        .query({ from: ids.origin })
-        .expect(200);
+        const res = await request(app.getHttpServer())
+          .get('/api/v1/trips/loading-now')
+          .query({ from: ids.origin })
+          .expect(200);
 
-      expect(res.body.map((t: { id: string }) => t.id)).toEqual([
-        ids.whenFull,
-        soon.id,
-      ]);
-      expect(res.body[0]).toMatchObject({
-        status: 'LOADING',
-        seatsLeft: 4,
-        route: {
-          origin: { id: ids.origin },
-          destination: { id: ids.destination, name: 'South' },
-        },
-      });
-    });
+        expect(res.body.map((t: { id: string }) => t.id)).toEqual([
+          ids.whenFull,
+          soon.id,
+        ]);
+        expect(res.body[0]).toMatchObject({
+          status: 'LOADING',
+          seatsLeft: 4,
+          route: {
+            origin: { id: ids.origin },
+            destination: { id: ids.destination, name: 'South' },
+          },
+        });
+      },
+    );
 
     it('leaves out buses whose departure time or leave-by deadline has passed', async () => {
       // Stored statuses that lag the clock: a bay that never freed up, and a
