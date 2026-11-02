@@ -128,7 +128,8 @@ On phones the layout follows the phone artboards. The header collapses to a menu
 ## Test mode
 
 - Payments run on Paystack test keys: no real money moves.
-- Emails (sign-in codes, tickets, staff invites) can't leave the API on Render's free plan, which blocks SMTP. They wait in the outbox until an email service that works over HTTPS is set up.
+- Emails (sign-in codes, tickets, staff invites) go through Brevo's HTTPS API, since Render's free plan blocks SMTP.
+- The demo operator's timetable restocks itself: with `DEMO_TIMETABLE` set, every tick adds the day's departures out of Accra for today and the next three days, so there are always buses to book. It needs the tick running (see [server/README.md](server/README.md)).
 - SMS is not used; tickets and codes go by email.
 
 ## Deploying the web app (Vercel)

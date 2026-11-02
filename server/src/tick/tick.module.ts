@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AdminModule } from '../admin/admin.module.js';
 import { BookingsModule } from '../bookings/bookings.module.js';
 import { MessagesModule } from '../messages/messages.module.js';
 import { PaymentsModule } from '../payments/payments.module.js';
@@ -10,7 +11,13 @@ import { TickService } from './tick.service.js';
 // Writes: various
 // Routes: /internal/tick
 @Module({
-  imports: [BookingsModule, TripsModule, PaymentsModule, MessagesModule],
+  imports: [
+    AdminModule,
+    BookingsModule,
+    TripsModule,
+    PaymentsModule,
+    MessagesModule,
+  ],
   controllers: [TickController],
   providers: [TickService],
 })

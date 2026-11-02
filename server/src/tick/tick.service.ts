@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { DemoTimetableService } from '../admin/demo-timetable.service.js';
 import { BookingsService } from '../bookings/bookings.service.js';
 import { SeatStatus, TripStatus } from '../generated/prisma/enums.js';
 import { MessagesService } from '../messages/messages.service.js';
@@ -25,6 +26,7 @@ export class TickService {
     private readonly trips: TripsService,
     private readonly payments: PaymentsService,
     private readonly messages: MessagesService,
+    private readonly demo: DemoTimetableService,
   ) {}
 
   async run(now = new Date()) {
@@ -34,6 +36,9 @@ export class TickService {
     const emailsSent = await this.messages.sendQueued();
     const refundsRequested = await this.payments.requestRefunds();
     const cleanedUp = await this.dailyCleanup(now);
+    // Only where DEMO_TIMETABLE names an operator: the live demo
+    const demoSlug = process.env.DEMO_TIMETABLE;
+    const demoTripsAdded = demoSlug ? await this.demo.fill(demoSlug, now) : 0;
 
     const summary = {
       holdsFreed,
@@ -42,6 +47,7 @@ export class TickService {
       emailsSent,
       refundsRequested,
       cleanedUp,
+      demoTripsAdded,
     };
     this.logger.log(`Tick: ${JSON.stringify(summary)}`);
     return summary;

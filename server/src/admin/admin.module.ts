@@ -9,6 +9,7 @@ import { AdminStaffController } from './admin-staff.controller.js';
 import { AdminStaffService } from './admin-staff.service.js';
 import { AdminTripsController } from './admin-trips.controller.js';
 import { AdminTripsService } from './admin-trips.service.js';
+import { DemoTimetableService } from './demo-timetable.service.js';
 import { FleetController } from './fleet.controller.js';
 import { FleetService } from './fleet.service.js';
 import { NetworkController } from './network.controller.js';
@@ -39,6 +40,9 @@ import { NetworkService } from './network.service.js';
     NetworkService,
     AdminTripsService,
     AdminStaffService,
+    DemoTimetableService,
   ],
+  // The tick keeps the demo operator's timetable stocked
+  exports: [DemoTimetableService],
 })
 export class AdminModule {}

@@ -42,6 +42,9 @@ services:
       # Copy this value into GitHub → Actions secrets → TICK_SECRET
       - key: TICK_SECRET
         generateValue: true
+      # The live demo: each tick keeps the seeded operator's timetable stocked
+      - key: DEMO_TIMETABLE
+        value: coastline-express
 
       - key: PAYMENT_PROVIDER
         value: paystack
