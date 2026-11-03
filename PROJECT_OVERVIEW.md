@@ -67,7 +67,7 @@ Payments run on Paystack's test mode, so no real money moves.
 | Documents | `pdfkit` for PDF tickets, `qrcode` for QR codes |
 | API docs | Swagger / OpenAPI (`@nestjs/swagger`) |
 | Logging | Pino (`nestjs-pino`): structured JSON logs with a request ID on every request |
-| Security | Helmet headers, CORS allow-list, rate limiting (`@nestjs/throttler`), cookie origin checks |
+| Security | Helmet headers, CORS allow-list, per-visitor rate limiting (`@nestjs/throttler`), cookie origin checks |
 
 ### Frontend (`client/`)
 
@@ -111,7 +111,8 @@ Payments run on Paystack's test mode, so no real money moves.
      └─► SSE streams ──► agent console and payment pages update live
 
   GitHub Actions ── every 30 min ──► POST /internal/tick
-     (frees expired holds, checks pending payments, retries emails and refunds)
+     (frees expired holds, checks pending payments, retries emails and refunds,
+      moves trips along, and keeps the demo timetable stocked)
 ```
 
 **Backend modules:** auth, staff-auth, catalog, trips, bookings, payments, tickets, agent, admin, platform, reports, realtime, messages, audit, tick, health.
@@ -138,6 +139,9 @@ Payments run on Paystack's test mode, so no real money moves.
   - Staff passwords are hashed with Argon2.
 - **Role-based access.** Passengers, agents, operator admins and platform admins each have their own guards. Operators only ever see their own data.
 - **Real-time updates without WebSockets.** Server-Sent Events push seat and payment changes to the agent console and the payment page.
+- **Trips that follow the clock.** A trip moves from scheduled to loading to departed on its own: lazily, whenever it is read, and on a schedule as a safety net. A bus past its departure time or leave-by deadline can't be booked, even if no agent pressed Depart, and it stops blocking its bay.
+- **A demo that restocks itself.** With one setting, the scheduled job keeps the demo operator's timetable filled for the next three days. It goes through the same trip creation as the dashboard, so bus clashes and bays are checked the same way, and it never overwrites a trip the operator changed.
+- **Rate limits per real visitor.** Requests reach the API through Vercel, Cloudflare and Render's load balancer. The API names the visitor from headers those proxies set, so limits count per person, not per proxy.
 - **Settings checked at startup.** On startup the API checks every required setting and lists all the problems at once, instead of failing later on a missing value.
 - **Audit trail.** Sensitive staff actions are written to an audit log.
 - **A frontend that recovers from errors.**
@@ -151,9 +155,10 @@ Payments run on Paystack's test mode, so no real money moves.
 
 | Type | What | Size |
 |---|---|---|
-| Unit tests | Services, providers, signing, env checks, logging (Vitest) | 96 tests in 16 files |
-| End-to-end API tests | Every module against a real Postgres database: auth, holds, payments, webhooks, tickets, agent sales, admin, reports, rate limits, SSE streams, the tick (Vitest + Supertest) | 158 test cases in 19 files |
-| Browser QA | Puppeteer runs the passenger, agent and operator journeys against the deployed site | 27 checks across 3 journeys |
+| Unit tests | Services, providers, signing, env checks, logging, trip timing, client IPs (Vitest) | 104 tests in 18 files |
+| End-to-end API tests | Every module against a real Postgres database: auth, holds, payments, webhooks, tickets, agent sales, admin, reports, rate limits, SSE streams, the tick, the demo timetable (Vitest + Supertest) | 164 test cases in 20 files |
+| Browser QA | Puppeteer runs the passenger, agent and operator journeys against the deployed site, also under the production security headers | 27 checks across 3 journeys |
+| Security review | Scripted probes of the live API: forged tokens, role and tenant checks, cookie flags, refresh-token replay, webhook signatures, input validation, seat races, rate limits | About 60 checks |
 
 The API tests use a fake payment provider, and can send email inline instead of in the background, so they run fast and give the same result every time.
 
@@ -169,7 +174,7 @@ The API tests use a fake payment provider, and can send email inline instead of 
   4. Run the unit tests.
   5. Apply the migrations.
   6. Run the end-to-end tests.
-- **Scheduled maintenance:** a GitHub Actions cron job calls a secret-protected `/internal/tick` endpoint every 30 minutes, as a safety net for expired holds, pending payments, email retries and refunds. It is written but not running yet: the repository variable and secret it needs haven't been set.
+- **Scheduled maintenance:** a GitHub Actions cron job calls a secret-protected `/internal/tick` endpoint every 30 minutes. It is a safety net for expired holds, pending payments, trip statuses, email retries and refunds, and it keeps the demo timetable stocked.
 - **Database changes:** versioned Prisma migrations, applied automatically when the API starts on Render. A seed script fills the database with demo operators, stations, buses and trips.
 
 ---
@@ -180,7 +185,7 @@ The API tests use a fake payment provider, and can send email inline instead of 
 |---|---|---|
 | API | Render (Frankfurt, the closest region to Ghana) | Multi-stage Docker image built from `server/Dockerfile`; deploys on push to `main` and is configured in `render.yaml` |
 | Database | Neon (eu-central-1) | Managed Postgres; migrations run on deploy |
-| Web app | Vercel | Vite static build; `vercel.json` adds a rewrite that proxies `/api` to Render, SPA fallback routing, asset caching and security headers |
+| Web app | Vercel | Vite static build; `vercel.json` adds a rewrite that proxies `/api` to Render, SPA fallback routing, asset caching, and security headers (a strict Content-Security-Policy, no framing) |
 | Email | Brevo | Transactional email over HTTPS (Render's free plan blocks SMTP) |
 | Payments | Paystack (test mode) | Mobile money and card charges, refunds, webhooks |
 
@@ -194,6 +199,8 @@ Secrets live only in the hosting platforms' environment settings, never in the r
 - **Cookies across two domains.** The frontend and API are on different domains, so a refresh cookie would count as third-party and browsers block those. I proxied `/api` through Vercel so the cookie is first-party, and made the cookie settings, the trusted proxy hops and the origin check configurable.
 - **CDN caching surprises.** Vercel's edge cache served an old station list after the database was re-seeded. I marked the response `private` so only the browser caches it.
 - **Slow work inside requests.** Sending email inside the payment request made replies time out. Moving email to a background outbox fixed it.
+- **Finding the real visitor behind three proxies.** Rate limits were blocking people at random. A temporary log of the forwarding headers showed requests pass through Vercel, Cloudflare and Render's load balancer, so the API had been counting by Cloudflare's servers. I tested which headers a client can forge (Cloudflare rejects a forged `CF-Connecting-IP`) and built the fix on the ones it can't.
+- **Bugs that only show with real time.** The live demo ran out of trips after the seed's day passed, and buses that should have left kept selling seats because only one kind of departure was checked against the clock. A CI run at 23:54 also failed, because two tests expected buses "later today" that fell after midnight.
 - **Real-world QA.** Running scripted browser journeys against the live site caught bugs the API tests couldn't, such as requests firing before the session was restored, a date-parsing crash, and a confirmation screen that disappeared too early.
 
 ---
@@ -206,6 +213,6 @@ Secrets live only in the hosting platforms' environment settings, never in the r
 - Built a full-stack booking platform for intercity buses in Ghana. It has separate apps for passengers, station agents and operators, and supports both fixed-time departures and buses that leave when full.
 - Designed a NestJS + PostgreSQL API (79 endpoints, 22 tables) where concurrent bookings can't take the same seat, using atomic conditional updates, expiring holds and idempotent payment requests.
 - Integrated Paystack mobile money and card payments, with HMAC-verified webhooks, automatic refunds and a background outbox for emails.
-- Implemented passwordless email sign-in, rotating refresh-token sessions, role-based access control, rate limiting, and HMAC-signed QR tickets scanned with the phone camera.
+- Implemented passwordless email sign-in, rotating refresh-token sessions, role-based access control, per-visitor rate limiting behind Vercel and Cloudflare, and HMAC-signed QR tickets scanned with the phone camera.
 - Built a React 19 + TanStack Query frontend with live updates over Server-Sent Events, a seat-layout editor and a camera QR scanner.
-- Wrote 250+ automated tests (Vitest, Supertest) running against a real Postgres database in GitHub Actions CI. Deployed with Docker on Render, Neon and Vercel.
+- Wrote 260+ automated tests (Vitest, Supertest) running against a real Postgres database in GitHub Actions CI, and ran a security review and browser QA against the live site. Deployed with Docker on Render, Neon and Vercel.
