@@ -41,7 +41,7 @@ describe('Health (e2e)', () => {
       .expect({
         error: {
           code: 'NOT_FOUND',
-          message: 'Cannot GET /api/v1/does-not-exist',
+          message: "That isn't available on Seatline.",
           details: {},
           requestId: 'test-request-0001',
         },

@@ -21,6 +21,8 @@ const CODE_BY_STATUS: Partial<Record<number, ErrorCode>> = {
   [HttpStatus.TOO_MANY_REQUESTS]: 'RATE_LIMITED',
 };
 
+const UNKNOWN_ROUTE_MESSAGE = "That isn't available on Seatline.";
+
 /**
  * Express's body parser rejects a body that is too large (or in a charset it
  * can't read) with a plain Error carrying its own 4xx `status`; `expose` marks
@@ -74,7 +76,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message = exception.message;
     } else if (exception instanceof HttpException && status < 500) {
       code = CODE_BY_STATUS[status] ?? 'VALIDATION_FAILED';
-      message = exception.message;
+      // Express's "Cannot GET /api/v1/…" for a route that doesn't exist
+      message = /^Cannot [A-Z]+ \//.test(exception.message)
+        ? UNKNOWN_ROUTE_MESSAGE
+        : exception.message;
     } else if (parserStatus) {
       code = CODE_BY_STATUS[status] ?? 'VALIDATION_FAILED';
       message =
