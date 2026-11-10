@@ -80,10 +80,25 @@ export class UpdateOperatorDto {
   @Max(30)
   holdMinutes?: number;
 
-  /** SUSPENDED hides the operator from search and stops new sales. */
+  /**
+   * SUSPENDED hides the operator from search, stops every sale and signs its
+   * staff out. To also cancel its trips, use POST /platform/operators/:id/suspend.
+   */
   @IsOptional()
   @IsEnum(OperatorStatus)
   status?: OperatorStatus;
+}
+
+export class SuspendOperatorDto {
+  /** Cancel its upcoming trips: online tickets are refunded, cash is listed. */
+  @IsBoolean()
+  cancelTrips: boolean;
+
+  /** Kept on each cancelled trip. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
 }
 
 export class InviteOperatorAdminDto {

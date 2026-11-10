@@ -5,7 +5,11 @@ import type { AuthUser } from '../common/auth/auth-user.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { requireSecret } from '../common/secrets.js';
 import type { Prisma } from '../generated/prisma/client.js';
-import { StaffStatus, SubjectType } from '../generated/prisma/enums.js';
+import {
+  OperatorStatus,
+  StaffStatus,
+  SubjectType,
+} from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { generateRefreshToken, hashRefreshToken } from './secrets-hashing.js';
 
@@ -214,9 +218,15 @@ export class TokensService {
           status: true,
           operatorId: true,
           stationId: true,
+          operator: { select: { status: true } },
         },
       });
-      if (!staff || staff.status !== StaffStatus.ACTIVE) {
+      // A suspended operator's staff can't stay signed in
+      if (
+        !staff ||
+        staff.status !== StaffStatus.ACTIVE ||
+        (staff.operator && staff.operator.status !== OperatorStatus.ACTIVE)
+      ) {
         throw refreshInvalid();
       }
       claims = {

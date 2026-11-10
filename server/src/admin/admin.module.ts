@@ -42,7 +42,8 @@ import { NetworkService } from './network.service.js';
     AdminStaffService,
     DemoTimetableService,
   ],
-  // The tick keeps the demo operator's timetable stocked
-  exports: [DemoTimetableService],
+  // The tick keeps the demo operator's timetable stocked; the platform
+  // cancels a suspended operator's trips
+  exports: [DemoTimetableService, AdminTripsService],
 })
 export class AdminModule {}

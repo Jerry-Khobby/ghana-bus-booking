@@ -2,6 +2,7 @@ import { StrictLimit } from '../common/rate-limits.js';
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -22,6 +23,7 @@ import {
   CreateOperatorDto,
   CreateStationDto,
   InviteOperatorAdminDto,
+  SuspendOperatorDto,
   UpdateOperatorDto,
   UpdateStationDto,
 } from './dto/platform.dto.js';
@@ -66,6 +68,34 @@ export class PlatformController {
     @Req() req: Request,
   ) {
     return this.platform.updateOperator(ctx(user, req), id, dto);
+  }
+
+  /** What suspending or deleting would touch, and whether delete is allowed. */
+  @Get('operators/:id/impact')
+  operatorImpact(@Param('id', ParseUUIDPipe) id: string) {
+    return this.platform.operatorImpact(id);
+  }
+
+  /** Suspend, and optionally cancel its upcoming trips with refunds. */
+  @Post('operators/:id/suspend')
+  @HttpCode(HttpStatus.OK)
+  suspendOperator(
+    @CurrentUser() user: StaffUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SuspendOperatorDto,
+    @Req() req: Request,
+  ) {
+    return this.platform.suspendOperator(ctx(user, req), id, dto);
+  }
+
+  /** Delete an operator that never had a booking. */
+  @Delete('operators/:id')
+  deleteOperator(
+    @CurrentUser() user: StaffUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.platform.deleteOperator(ctx(user, req), id);
   }
 
   /** Invite the operator's first OPERATOR_ADMIN. */

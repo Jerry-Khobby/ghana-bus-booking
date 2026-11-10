@@ -2,9 +2,11 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { hash, verify } from '@node-rs/argon2';
 import { createHash, randomBytes } from 'node:crypto';
 import { TokensService } from '../auth/tokens.service.js';
+import { operatorSuspended } from '../common/auth/roles.js';
 import { AppException } from '../common/errors/app.exception.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import {
+  OperatorStatus,
   StaffRole,
   StaffStatus,
   SubjectType,
@@ -79,6 +81,7 @@ export class StaffAuthService {
         passwordHash: true,
         failedLogins: true,
         lockedUntil: true,
+        operator: { select: { status: true } },
       },
     });
     const now = new Date();
@@ -124,6 +127,11 @@ export class StaffAuthService {
         'Agents sign in to the agent console',
         HttpStatus.FORBIDDEN,
       );
+    }
+
+    // Only said after the right password, so it can't be used to probe
+    if (staff.operator && staff.operator.status !== OperatorStatus.ACTIVE) {
+      throw operatorSuspended();
     }
 
     await this.prisma.staffUser.update({
@@ -203,7 +211,14 @@ export class StaffAuthService {
         type: true,
         usedAt: true,
         expiresAt: true,
-        staffUser: { select: { id: true, email: true, status: true } },
+        staffUser: {
+          select: {
+            id: true,
+            email: true,
+            status: true,
+            operator: { select: { status: true } },
+          },
+        },
       },
     });
     if (
@@ -218,6 +233,10 @@ export class StaffAuthService {
         'This link is wrong, used or expired. Ask your admin for a new one.',
         HttpStatus.UNAUTHORIZED,
       );
+    }
+    const { operator } = stored.staffUser;
+    if (operator && operator.status !== OperatorStatus.ACTIVE) {
+      throw operatorSuspended();
     }
     checkPassword(password, stored.staffUser.email);
     const passwordHash = await hash(password);

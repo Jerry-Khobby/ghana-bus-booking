@@ -89,7 +89,7 @@ describe('Platform admin (e2e)', () => {
     ).body.accessToken as string;
   }
   const call = (
-    method: 'get' | 'post' | 'patch',
+    method: 'get' | 'post' | 'patch' | 'delete',
     path: string,
     token = platform,
   ) =>
@@ -263,6 +263,228 @@ describe('Platform admin (e2e)', () => {
       expect((await search()).body.map((t: { id: string }) => t.id)).toContain(
         trip.id,
       );
+    });
+  });
+
+  describe('suspending and deleting', () => {
+    // A company of its own, so suspending it leaves the other tests alone
+    let co: Fixture;
+    beforeAll(async () => {
+      co = await createFixture(prisma);
+    });
+    afterAll(async () => {
+      await co?.cleanup();
+    });
+
+    it("signs the company's staff out and keeps them out until it's reactivated", async () => {
+      const agent = await co.createStaff({
+        password: PASSWORD,
+        bayNumbers: [1],
+      });
+      const boss = await co.createStaff({
+        role: 'OPERATOR_ADMIN',
+        password: PASSWORD,
+      });
+      const agentToken = await login(agent.email, 'AGENT');
+      const signIn = await http()
+        .post('/api/v1/staff/auth/login')
+        .send({ email: boss.email, password: PASSWORD, as: 'OPERATOR' })
+        .expect(200);
+      const refreshCookie = ([] as string[])
+        .concat(signIn.headers['set-cookie'] ?? [])
+        .map((c) => c.split(';')[0]);
+      const openConsole = () =>
+        http()
+          .get('/api/v1/agent/console')
+          .set('Authorization', `Bearer ${agentToken}`);
+      await openConsole().expect(200);
+
+      await call('post', `/operators/${co.operator.id}/suspend`)
+        .send({ cancelTrips: false })
+        .expect(200);
+
+      // The token they already hold stops working at once
+      const refused = await openConsole().expect(403);
+      expect(refused.body.error.code).toBe('OPERATOR_SUSPENDED');
+      // Their session can't be renewed, and they can't sign in again
+      await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', refreshCookie)
+        .expect(401);
+      const again = await http()
+        .post('/api/v1/staff/auth/login')
+        .send({ email: agent.email, password: PASSWORD, as: 'AGENT' })
+        .expect(403);
+      expect(again.body.error.code).toBe('OPERATOR_SUSPENDED');
+      // Only said to someone with the right password
+      const wrong = await http()
+        .post('/api/v1/staff/auth/login')
+        .send({
+          email: agent.email,
+          password: 'not-the-password-1',
+          as: 'AGENT',
+        })
+        .expect(401);
+      expect(wrong.body.error.code).toBe('INVALID_CREDENTIALS');
+
+      await call('patch', `/operators/${co.operator.id}`)
+        .send({ status: 'ACTIVE' })
+        .expect(200);
+      await login(agent.email, 'AGENT');
+    });
+
+    it('can cancel its upcoming trips, refunding tickets, and leaves past ones alone', async () => {
+      const upcoming = await co.createTrip({
+        loadingStartsAt: minutesFromNow(60),
+        departureAt: minutesFromNow(120),
+      });
+      const ticket = await co.createBooking(upcoming.id, '1', 'CONFIRMED');
+      // Due an hour ago but never marked departed: passengers travelled
+      const past = await co.createTrip({
+        bayId: co.bays[1].id,
+        loadingStartsAt: minutesFromNow(-120),
+        departureAt: minutesFromNow(-60),
+      });
+      const travelled = await co.createBooking(past.id, '1', 'CONFIRMED');
+
+      const impact = await call(
+        'get',
+        `/operators/${co.operator.id}/impact`,
+      ).expect(200);
+      expect(impact.body).toMatchObject({
+        upcomingTrips: 1,
+        ticketsOnUpcomingTrips: 1,
+        deletable: false,
+      });
+
+      const res = await call('post', `/operators/${co.operator.id}/suspend`)
+        .send({ cancelTrips: true, reason: 'Licence withdrawn' })
+        .expect(200);
+      expect(res.body).toMatchObject({
+        operator: { id: co.operator.id, status: 'SUSPENDED' },
+        tripsCancelled: 1,
+        refundsPending: 1,
+        cashToRepay: [],
+      });
+
+      const after = await prisma.trip.findMany({
+        where: { id: { in: [upcoming.id, past.id] } },
+        select: { id: true, status: true, cancelReason: true },
+      });
+      expect(after).toEqual(
+        expect.arrayContaining([
+          {
+            id: upcoming.id,
+            status: 'CANCELLED',
+            cancelReason: 'Licence withdrawn',
+          },
+          { id: past.id, status: 'SCHEDULED', cancelReason: null },
+        ]),
+      );
+      const bookings = await prisma.booking.findMany({
+        where: { id: { in: [ticket.id, travelled.id] } },
+        select: { id: true, status: true },
+      });
+      expect(bookings).toEqual(
+        expect.arrayContaining([
+          { id: ticket.id, status: 'REFUND_PENDING' },
+          { id: travelled.id, status: 'CONFIRMED' },
+        ]),
+      );
+
+      // A company that sold seats is kept for the books
+      const del = await call('delete', `/operators/${co.operator.id}`).expect(
+        409,
+      );
+      expect(del.body.error.code).toBe('OPERATOR_HAS_SALES');
+      expect(
+        await prisma.operator.count({ where: { id: co.operator.id } }),
+      ).toBe(1);
+    });
+
+    it('deletes a company that never sold a seat, with its fleet and staff', async () => {
+      const operator = (
+        await call('post', '/operators')
+          .send({ name: 'Added By Mistake', slug: `mistake-${fx.suffix}` })
+          .expect(201)
+      ).body;
+      created.operators.push(operator.id);
+      const email = `mistake@${fx.suffix}.test`;
+      const admin = (
+        await call('post', `/operators/${operator.id}/admins`)
+          .send({ name: 'Ama M.', email })
+          .expect(201)
+      ).body;
+      // Set up as far as a trip, but nothing sold
+      const layout = await prisma.seatLayout.create({
+        data: {
+          operatorId: operator.id,
+          name: 'Tiny',
+          rows: 1,
+          cols: 1,
+          cells: [{ r: 0, c: 0, type: 'SEAT', label: '1' }],
+          seatCount: 1,
+        },
+      });
+      const bus = await prisma.bus.create({
+        data: {
+          operatorId: operator.id,
+          plate: `DEL ${fx.suffix}`,
+          type: 'MINIBUS',
+          layoutId: layout.id,
+        },
+      });
+      const bay = await prisma.bay.create({
+        data: { operatorId: operator.id, stationId: fx.origin.id, number: 1 },
+      });
+      const route = await prisma.route.create({
+        data: {
+          operatorId: operator.id,
+          originStationId: fx.origin.id,
+          destinationStationId: fx.destination.id,
+          baseFarePesewas: 4000,
+        },
+      });
+      await prisma.trip.create({
+        data: {
+          operatorId: operator.id,
+          routeId: route.id,
+          busId: bus.id,
+          bayId: bay.id,
+          mode: 'FIXED_TIME',
+          departureAt: minutesFromNow(600),
+          farePesewas: 4000,
+          seatsTotal: 1,
+          layoutSnapshot: { rows: 1, cols: 1, cells: [] },
+          createdById: admin.id,
+          seats: { create: [{ label: '1', row: 0, col: 0 }] },
+        },
+      });
+
+      const impact = await call(
+        'get',
+        `/operators/${operator.id}/impact`,
+      ).expect(200);
+      expect(impact.body).toMatchObject({ bookings: 0, deletable: true });
+
+      // Only the platform can delete
+      await call('delete', `/operators/${operator.id}`, operatorAdmin).expect(
+        403,
+      );
+      await call('delete', `/operators/${operator.id}`).expect(200, {
+        deleted: true,
+      });
+
+      expect(await prisma.operator.count({ where: { id: operator.id } })).toBe(
+        0,
+      );
+      expect(await prisma.staffUser.count({ where: { email } })).toBe(0);
+      expect(await prisma.bus.count({ where: { id: bus.id } })).toBe(0);
+      const log = await prisma.auditLog.findFirst({
+        where: { action: 'operator.delete', entityId: operator.id },
+      });
+      expect(log?.before).toMatchObject({ name: 'Added By Mistake' });
+      await call('delete', `/operators/${operator.id}`).expect(404);
     });
   });
 

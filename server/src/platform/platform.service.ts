@@ -1,20 +1,29 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { invalidField, notFound } from '../admin/admin-context.js';
+import { AdminTripsService } from '../admin/admin-trips.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { TokensService } from '../auth/tokens.service.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { normalizeGhanaPhone } from '../common/phone.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import {
+  BookingStatus,
+  OperatorStatus,
   StaffRole,
   StaffStatus,
+  SubjectType,
   TokenType,
+  TripStatus,
 } from '../generated/prisma/enums.js';
 import { MessagesService } from '../messages/messages.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StaffAuthService } from '../staff-auth/staff-auth.service.js';
+import { notLeftYet } from '../trips/trips.service.js';
 import {
   CreateOperatorDto,
   CreateStationDto,
   InviteOperatorAdminDto,
+  SuspendOperatorDto,
   UpdateOperatorDto,
   UpdateStationDto,
 } from './dto/platform.dto.js';
@@ -42,6 +51,27 @@ const operatorSelect = {
   _count: { select: { buses: true, routes: true, staff: true } },
 } as const;
 
+/** Trips a suspension can still cancel: not gone, not cancelled, not left. */
+const upcomingTrips = (
+  operatorId: string,
+  now: Date,
+): Prisma.TripWhereInput => ({
+  operatorId,
+  status: { in: [TripStatus.SCHEDULED, TripStatus.LOADING, TripStatus.FULL] },
+  AND: [notLeftYet(now)],
+});
+
+const DEFAULT_CANCEL_REASON = 'This bus company is no longer on Seatline';
+const DELETE_TX = { maxWait: 10_000, timeout: 30_000 };
+
+type CashToRepay = {
+  code: string;
+  seatLabel: string;
+  passengerName: string | null;
+  amountPesewas: number;
+  soldBy: string | null;
+};
+
 const adminSelect = {
   id: true,
   name: true,
@@ -61,6 +91,8 @@ export class PlatformService {
     private readonly audit: AuditService,
     private readonly messages: MessagesService,
     private readonly staffAuth: StaffAuthService,
+    private readonly tokens: TokensService,
+    private readonly trips: AdminTripsService,
   ) {}
 
   /** GET /platform/operators */
@@ -107,7 +139,7 @@ export class PlatformService {
       select: operatorSelect,
     });
     if (!before) throw notFound('Operator');
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       const operator = await tx.operator.update({
         where: { id },
         data: {
@@ -130,6 +162,156 @@ export class PlatformService {
       });
       return toOperator(operator);
     });
+    if (
+      dto.status === OperatorStatus.SUSPENDED &&
+      before.status !== OperatorStatus.SUSPENDED
+    ) {
+      await this.signOutStaff(id);
+    }
+    return updated;
+  }
+
+  /**
+   * GET /platform/operators/:id/impact: what suspending or deleting would
+   * touch. Only an operator that never had a booking can be deleted.
+   */
+  async operatorImpact(id: string) {
+    const operator = await this.prisma.operator.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!operator) throw notFound('Operator');
+    const upcoming = upcomingTrips(id, new Date());
+    const [trips, tickets, bookings, staff] = await Promise.all([
+      this.prisma.trip.count({ where: upcoming }),
+      this.prisma.booking.count({
+        where: { trip: upcoming, status: BookingStatus.CONFIRMED },
+      }),
+      this.prisma.booking.count({ where: { operatorId: id } }),
+      this.prisma.staffUser.count({ where: { operatorId: id } }),
+    ]);
+    return {
+      upcomingTrips: trips,
+      ticketsOnUpcomingTrips: tickets,
+      bookings,
+      staff,
+      deletable: bookings === 0,
+    };
+  }
+
+  /**
+   * POST /platform/operators/:id/suspend: suspends (search, sales and staff
+   * sign-in all stop) and can cancel its upcoming trips the way its admin
+   * would: online tickets refunded, cash walk-ins listed, everyone emailed.
+   */
+  async suspendOperator(
+    ctx: PlatformContext,
+    id: string,
+    dto: SuspendOperatorDto,
+  ) {
+    let operator = await this.updateOperator(ctx, id, {
+      status: OperatorStatus.SUSPENDED,
+    });
+    let tripsCancelled = 0;
+    let refundsPending = 0;
+    let passengersEmailed = 0;
+    const cashToRepay: CashToRepay[] = [];
+    if (dto.cancelTrips) {
+      const trips = await this.prisma.trip.findMany({
+        where: upcomingTrips(id, new Date()),
+        select: { id: true },
+      });
+      const reason = dto.reason?.trim() || DEFAULT_CANCEL_REASON;
+      const asOperator = { operatorId: id, staffId: ctx.staffId, ip: ctx.ip };
+      for (const trip of trips) {
+        try {
+          const done = await this.trips.cancel(asOperator, trip.id, reason);
+          tripsCancelled++;
+          refundsPending += done.refundsPending;
+          passengersEmailed += done.passengersEmailed;
+          cashToRepay.push(...done.cashToRepay);
+        } catch (e) {
+          // Departed or cancelled in the meantime: nothing left to do for it
+          if (!(e instanceof AppException && e.code === 'TRIP_LOCKED')) throw e;
+        }
+      }
+      // Its bus and route counts are unchanged; refreshed for the status
+      operator = (await this.listOperators()).find((o) => o.id === id)!;
+    }
+    return {
+      operator,
+      tripsCancelled,
+      refundsPending,
+      passengersEmailed,
+      cashToRepay,
+    };
+  }
+
+  /**
+   * DELETE /platform/operators/:id: only for an operator that never had a
+   * booking (added by mistake, or a test). Its fleet, routes, trips and staff
+   * go with it; its audit history stays, unlinked. Anything that ever sold a
+   * seat is kept for refunds and the books: suspend those instead.
+   */
+  async deleteOperator(ctx: PlatformContext, id: string) {
+    const operator = await this.prisma.operator.findUnique({
+      where: { id },
+      select: { id: true, name: true, slug: true },
+    });
+    if (!operator) throw notFound('Operator');
+
+    await this.prisma.$transaction(async (tx) => {
+      // Checked inside the transaction; the foreign keys back it up anyway
+      if (await tx.booking.count({ where: { operatorId: id } })) {
+        throw new AppException(
+          'OPERATOR_HAS_SALES',
+          `${operator.name} has sold seats, so its records must stay. Suspend it instead.`,
+          HttpStatus.CONFLICT,
+        );
+      }
+      const staff = (
+        await tx.staffUser.findMany({
+          where: { operatorId: id },
+          select: { id: true },
+        })
+      ).map((s) => s.id);
+      await tx.scanLog.deleteMany({
+        where: {
+          OR: [{ trip: { operatorId: id } }, { staffId: { in: staff } }],
+        },
+      });
+      // Seats go with their trips; invite links and bay lists with the staff
+      await tx.trip.deleteMany({ where: { operatorId: id } });
+      await tx.refreshToken.deleteMany({
+        where: { subjectType: SubjectType.STAFF, subjectId: { in: staff } },
+      });
+      await tx.staffUser.deleteMany({ where: { operatorId: id } });
+      await tx.bay.deleteMany({ where: { operatorId: id } });
+      await tx.bus.deleteMany({ where: { operatorId: id } });
+      await tx.route.deleteMany({ where: { operatorId: id } });
+      await tx.seatLayout.deleteMany({ where: { operatorId: id } });
+      await tx.auditLog.updateMany({
+        where: { operatorId: id },
+        data: { operatorId: null },
+      });
+      await tx.operator.delete({ where: { id } });
+      await this.audit.record(tx, {
+        ...entry(ctx, 'operator.delete', 'Operator', id),
+        before: { name: operator.name, slug: operator.slug },
+      });
+    }, DELETE_TX);
+    return { deleted: true as const };
+  }
+
+  /** Ends every session of the operator's staff; RolesGuard stops the rest. */
+  private async signOutStaff(operatorId: string) {
+    const staff = await this.prisma.staffUser.findMany({
+      where: { operatorId },
+      select: { id: true },
+    });
+    for (const { id } of staff) {
+      await this.tokens.revokeAll(SubjectType.STAFF, id);
+    }
   }
 
   /** POST /platform/operators/:id/admins: invites an OPERATOR_ADMIN by email. */
