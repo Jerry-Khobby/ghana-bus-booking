@@ -36,10 +36,13 @@ export function isApiError(error: unknown, code?: string): error is ApiError {
 
 /** A message fit to show a passenger, whatever went wrong. */
 export function errorMessage(error: unknown): string {
+  // A route this server doesn't have (yet): the web app deployed before the API
+  if (error instanceof ApiError && error.code === 'NOT_FOUND' && /^Cannot [A-Z]+ \//.test(error.message)) return UNAVAILABLE_MESSAGE
   if (error instanceof ApiError) return error.message
   return 'Something went wrong. Please try again.'
 }
 
+const UNAVAILABLE_MESSAGE = "This part of Seatline isn't available right now. It may be updating, so try again in a few minutes."
 const NETWORK_MESSAGE = 'Could not reach Seatline. Check your connection and try again.'
 
 /** The request never got a real answer: no connection, a timeout, or a proxy with nothing to say. */

@@ -21,6 +21,8 @@ const paths = {
   reports: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />,
   signOut: <path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" strokeLinejoin="round" />,
   arrowRight: <path d="M5 12h14m-6-6 6 6-6 6" strokeLinejoin="round" />,
+  alert: <><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5.5M12 16.5v.01" /></>,
+  refresh: <path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" strokeLinejoin="round" />,
 } as const
 
 export type IconName = keyof typeof paths

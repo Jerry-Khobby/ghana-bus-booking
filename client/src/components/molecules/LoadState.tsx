@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { errorMessage } from '@/api/client'
+import { Icon } from '@/components/atoms'
 import { cx } from '@/lib/format'
 
 /** After this long, say why it's slow: the free server sleeps when idle. */
@@ -42,18 +43,40 @@ export function LoadState({
     )
   }
   if (!error) return null
+  const dark = tone === 'dark'
   return (
-    <div role="alert" className={cx('flex flex-col items-center gap-3 rounded-[14px] border border-dashed border-line-strong p-6 text-center', className)}>
-      <p className={cx('m-0', tone === 'dark' ? 'text-white' : 'text-ink')}>{errorMessage(error)}</p>
+    <div
+      role="alert"
+      className={cx(
+        'flex flex-col items-center gap-3 rounded-2xl border px-6 py-8 text-center',
+        dark ? 'border-white/20 bg-white/5' : 'border-line bg-surface',
+        className,
+      )}
+    >
+      <span className={cx('grid size-12 place-items-center rounded-full', dark ? 'bg-white/10 text-gold' : 'bg-held text-held-ink')}>
+        <Icon name="alert" size={26} />
+      </span>
+      <p className={cx('m-0 font-display text-lg font-bold', dark ? 'text-white' : 'text-ink')}>{failedTitle(label)}</p>
+      <p className={cx('m-0 max-w-[46ch] text-[15px]', muted)}>{errorMessage(error)}</p>
       {onRetry && (
         <button
           type="button"
           onClick={onRetry}
-          className="min-h-11 cursor-pointer rounded-[10px] border-2 border-ink bg-surface px-5 font-semibold text-ink hover:bg-sunken"
+          className={cx(
+            'mt-1 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-[10px] border-2 px-5 font-semibold',
+            dark ? 'border-white bg-transparent text-white hover:bg-white/10' : 'border-ink bg-surface text-ink hover:bg-sunken',
+          )}
         >
+          <Icon name="refresh" size={18} />
           Try again
         </button>
       )}
     </div>
   )
+}
+
+/** "Loading applications…" → "Couldn't load applications". */
+function failedTitle(label: string) {
+  const what = /^Loading\s+(.+?)(…|\.\.\.)?$/i.exec(label)?.[1]
+  return what ? `Couldn't load ${what}` : 'Something went wrong'
 }
