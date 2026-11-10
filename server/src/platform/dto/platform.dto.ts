@@ -13,7 +13,7 @@ import {
 } from 'class-validator';
 import { OperatorStatus } from '../../generated/prisma/enums.js';
 
-const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+export const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 export class CreateOperatorDto {
   @IsString()

@@ -44,7 +44,10 @@ export type TemplateName =
   | 'trip-changed'
   | 'trip-cancelled'
   | 'staff-invite'
-  | 'staff-reset';
+  | 'staff-reset'
+  | 'application-received'
+  | 'application-alert'
+  | 'application-declined';
 
 /** Everything user-supplied goes through this before it reaches the HTML. */
 export function escapeHtml(value: string): string {
@@ -199,13 +202,20 @@ export function tripCancelledEmail(data: TripCancelledData): RenderedEmail {
 const button = (url: string, label: string) =>
   `<p style="margin:16px 0 0"><a href="${escapeHtml(url)}" style="display:inline-block;background:#1f6f4a;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold">${label}</a></p>`;
 
-/** An admin invited a new agent. The link is valid for 7 days. */
+/**
+ * An admin invited a new agent, or Seatline invited a bus company's admin.
+ * The link is valid for 7 days.
+ */
 export function staffInviteEmail(data: {
   name: string;
   operatorName: string;
   url: string;
+  role?: 'agent' | 'admin';
 }): RenderedEmail {
-  const line = `${data.operatorName} has invited you to sell and scan tickets on Seatline.`;
+  const line =
+    data.role === 'admin'
+      ? `Seatline has set up ${data.operatorName} for you to run: buses, routes, trips, agents and reports.`
+      : `${data.operatorName} has invited you to sell and scan tickets on Seatline.`;
   return {
     subject: "You're invited to Seatline (link valid 7 days)",
     html: layout(`
@@ -265,6 +275,66 @@ export function lateRefundEmail(data: LateRefundData): RenderedEmail {
       apology,
       '',
       "You don't need to do anything. Refunds usually arrive within a few working days.",
+    ].join('\n'),
+  };
+}
+
+/** A bus company sent the /join form. */
+export function applicationReceivedEmail(data: {
+  contactName: string;
+  companyName: string;
+}): RenderedEmail {
+  const line = `We have your application to put ${data.companyName} on Seatline. We'll review it and email you within two working days.`;
+  const next =
+    'Once approved, you get an email to set your password and start adding your buses and routes.';
+  return {
+    subject: 'We have your Seatline application',
+    html: layout(`
+<h1 style="margin:0 0 16px;font-size:20px">Thanks for applying</h1>
+<p style="margin:0 0 12px">${escapeHtml(greeting(data.contactName))} ${escapeHtml(line)}</p>
+<p style="margin:0">${next}</p>`),
+    text: [greeting(data.contactName), '', line, next].join('\n'),
+  };
+}
+
+/** Tells Seatline's platform admins an application is waiting. */
+export function applicationAlertEmail(data: {
+  companyName: string;
+  city: string;
+  url: string;
+}): RenderedEmail {
+  const line = `${data.companyName} (${data.city}) has applied to join Seatline.`;
+  return {
+    subject: `New operator application: ${data.companyName}`,
+    html: layout(`
+<h1 style="margin:0 0 16px;font-size:20px">New application</h1>
+<p style="margin:0">${escapeHtml(line)}</p>
+${button(data.url, 'Review applications')}`),
+    text: [line, '', `Review it: ${data.url}`].join('\n'),
+  };
+}
+
+/** A platform admin declined an application. */
+export function applicationDeclinedEmail(data: {
+  contactName: string;
+  companyName: string;
+  reason: string | null;
+}): RenderedEmail {
+  const line = `We can't put ${data.companyName} on Seatline right now.`;
+  const again = "You're welcome to apply again later.";
+  return {
+    subject: 'Your Seatline application',
+    html: layout(`
+<h1 style="margin:0 0 16px;font-size:20px">About your application</h1>
+<p style="margin:0 0 12px">${escapeHtml(greeting(data.contactName))} ${escapeHtml(line)}</p>
+${data.reason ? `<p style="margin:0 0 12px">${escapeHtml(data.reason)}</p>` : ''}
+<p style="margin:0">${again}</p>`),
+    text: [
+      greeting(data.contactName),
+      '',
+      line,
+      ...(data.reason ? [data.reason] : []),
+      again,
     ].join('\n'),
   };
 }

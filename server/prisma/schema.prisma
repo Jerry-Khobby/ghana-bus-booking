@@ -25,6 +25,12 @@ enum OperatorStatus {
   SUSPENDED
 }
 
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
 enum StaffRole {
   AGENT
   OPERATOR_ADMIN
@@ -172,15 +178,16 @@ model Operator {
   createdAt         DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
 
-  bays        Bay[]
-  routes      Route[]
-  seatLayouts SeatLayout[]
-  buses       Bus[]
-  trips       Trip[]
-  staff       StaffUser[]
-  bookings    Booking[]
-  cashEntries CashEntry[]
-  auditLogs   AuditLog[]
+  applications OperatorApplication[]
+  bays         Bay[]
+  routes       Route[]
+  seatLayouts  SeatLayout[]
+  buses        Bus[]
+  trips        Trip[]
+  staff        StaffUser[]
+  bookings     Booking[]
+  cashEntries  CashEntry[]
+  auditLogs    AuditLog[]
 }
 
 /// A bus terminal, shared by all operators.
@@ -655,4 +662,31 @@ model AuditLog {
 
   @@index([operatorId, createdAt])
   @@index([entityType, entityId])
+}
+
+/// A bus company asking to join, from the public /join form. A platform
+/// admin approves it (creating the operator and inviting its admin) or
+/// declines it.
+model OperatorApplication {
+  id            String            @id @default(uuid(7)) @db.Uuid
+  companyName   String
+  contactName   String
+  email         String
+  phone         String
+  city          String
+  fleetSize     Int?
+  message       String?
+  status        ApplicationStatus @default(PENDING)
+  /// The operator an approved application became.
+  operatorId    String?           @db.Uuid
+  reviewedById  String?           @db.Uuid
+  reviewedAt    DateTime?         @db.Timestamptz(3)
+  declineReason String?
+  createdAt     DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @db.Timestamptz(3)
+
+  operator Operator? @relation(fields: [operatorId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([email])
 }

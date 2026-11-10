@@ -7,6 +7,9 @@ import { TicketsService } from '../tickets/tickets.service.js';
 import { departureLine } from '../common/format.js';
 import { MAILER, type EmailMessage, type Mailer } from './mailer.js';
 import {
+  applicationAlertEmail,
+  applicationDeclinedEmail,
+  applicationReceivedEmail,
   lateRefundEmail,
   otpEmail,
   staffInviteEmail,
@@ -74,7 +77,12 @@ export class MessagesService {
   queueStaffInvite(
     db: Db,
     to: string,
-    data: { name: string; operatorName: string; token: string },
+    data: {
+      name: string;
+      operatorName: string;
+      token: string;
+      role?: 'agent' | 'admin';
+    },
   ) {
     const url = `${this.webUrl}/staff/accept?token=${encodeURIComponent(data.token)}`;
     return this.queue(
@@ -89,6 +97,51 @@ export class MessagesService {
   queueStaffReset(db: Db, to: string, data: { name: string; token: string }) {
     const url = `${this.webUrl}/staff/reset?token=${encodeURIComponent(data.token)}`;
     return this.queue(db, to, 'staff-reset', staffResetEmail({ ...data, url }));
+  }
+
+  /** Thanks a bus company for applying. */
+  queueApplicationReceived(
+    db: Db,
+    to: string,
+    data: { contactName: string; companyName: string },
+  ) {
+    return this.queue(
+      db,
+      to,
+      'application-received',
+      applicationReceivedEmail(data),
+    );
+  }
+
+  /** Tells a platform admin an application is waiting. */
+  queueApplicationAlert(
+    db: Db,
+    to: string,
+    data: { companyName: string; city: string },
+  ) {
+    return this.queue(
+      db,
+      to,
+      'application-alert',
+      applicationAlertEmail({
+        ...data,
+        url: `${this.webUrl}/platform/applications`,
+      }),
+    );
+  }
+
+  /** Lets a bus company know its application was declined. */
+  queueApplicationDeclined(
+    db: Db,
+    to: string,
+    data: { contactName: string; companyName: string; reason: string | null },
+  ) {
+    return this.queue(
+      db,
+      to,
+      'application-declined',
+      applicationDeclinedEmail(data),
+    );
   }
 
   /** The links an invite or reset email carries, for showing in development. */

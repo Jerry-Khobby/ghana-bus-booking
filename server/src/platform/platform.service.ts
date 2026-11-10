@@ -179,6 +179,7 @@ export class PlatformService {
           name: admin.name,
           operatorName: operator.name,
           token,
+          role: 'admin',
         });
         await this.audit.record(tx, {
           ...entry(ctx, 'operator.invite-admin', 'StaffUser', admin.id),
@@ -252,6 +253,7 @@ export class PlatformService {
             name: admin.name,
             operatorName: admin.operator!.name,
             token,
+            role: 'admin',
           })
         : await this.messages.queueStaffReset(tx, admin.email, {
             name: admin.name,
@@ -339,7 +341,7 @@ export class PlatformService {
   }
 }
 
-function entry(
+export function entry(
   ctx: PlatformContext,
   action: string,
   entityType: string,
@@ -373,12 +375,8 @@ function trimmed<T extends { name?: string; city?: string; region?: string }>(
   };
 }
 
-function toOperator({
-  _count,
-  ...operator
-}: {
-  _count: { buses: number; routes: number; staff: number };
-  [key: string]: unknown;
-}) {
+function toOperator<
+  T extends { _count: { buses: number; routes: number; staff: number } },
+>({ _count, ...operator }: T) {
   return { ...operator, counts: _count };
 }
