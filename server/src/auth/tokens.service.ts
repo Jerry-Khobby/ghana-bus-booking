@@ -4,11 +4,17 @@ import { randomUUID } from 'node:crypto';
 import type { AuthUser } from '../common/auth/auth-user.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { requireSecret } from '../common/secrets.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import { StaffStatus, SubjectType } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { generateRefreshToken, hashRefreshToken } from './secrets-hashing.js';
 
 const HOUR_MS = 60 * 60 * 1000;
+/**
+ * A rotated token used again this soon is a race, not theft: the browser may
+ * not have stored the new cookie yet. Replays after this end the sign-in.
+ */
+export const REUSE_GRACE_MS = 30_000;
 /** Passengers stay signed in a month; agents sign in once per shift. */
 export const REFRESH_LIFETIME_MS: Record<SubjectType, number> = {
   PASSENGER: 30 * 24 * HOUR_MS,
@@ -29,8 +35,8 @@ interface ClientInfo {
 /**
  * Access tokens (15-minute JWTs) and rotating refresh tokens, for passengers
  * and staff alike. Each refresh replaces the token and revokes the old one; a
- * revoked token used again means it was stolen, so its whole family is
- * revoked.
+ * revoked token used again, after REUSE_GRACE_MS, means it was stolen, so its
+ * whole family is revoked.
  */
 @Injectable()
 export class TokensService {
@@ -67,9 +73,16 @@ export class TokensService {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: hashRefreshToken(refreshToken, this.pepper) },
     });
+    // Signing out, a detected theft and a disabled account expire the whole
+    // family, so an unexpired token can only have been rotated
     if (!stored || stored.expiresAt <= now) throw refreshInvalid();
 
     if (stored.revokedAt) {
+      // Rotated seconds ago: two tabs restoring at once, or a page left
+      // before the new cookie arrived. A new token in the same sign-in.
+      if (now.getTime() - stored.revokedAt.getTime() <= REUSE_GRACE_MS) {
+        return this.rotate(stored, client);
+      }
       // Someone is replaying an old token: end every session in this family
       this.logger.warn(
         `Refresh token reused for ${stored.subjectType} ${stored.subjectId}; revoking its family`,
@@ -82,13 +95,27 @@ export class TokensService {
       );
     }
 
-    // Conditional, so two refreshes racing with one token can't both win
+    // Conditional. If another request got here first it either rotated the
+    // token (the same race as above) or signed out, which expired it.
     const { count } = await this.prisma.refreshToken.updateMany({
       where: { id: stored.id, revokedAt: null },
       data: { revokedAt: now },
     });
-    if (!count) throw refreshInvalid();
+    if (!count) {
+      const again = await this.prisma.refreshToken.findUnique({
+        where: { id: stored.id },
+        select: { expiresAt: true },
+      });
+      if (!again || again.expiresAt <= now) throw refreshInvalid();
+    }
+    return this.rotate(stored, client);
+  }
 
+  /** A fresh access token and the next refresh token in this sign-in. */
+  private async rotate(
+    stored: { subjectType: SubjectType; subjectId: string; familyId: string },
+    client: ClientInfo,
+  ) {
     const accessToken = await this.accessTokenFor(
       stored.subjectType,
       stored.subjectId,
@@ -116,17 +143,29 @@ export class TokensService {
 
   /** Ends every session for one person (e.g. a disabled agent). */
   async revokeAll(subjectType: SubjectType, subjectId: string) {
-    await this.prisma.refreshToken.updateMany({
-      where: { subjectType, subjectId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    await this.end({ subjectType, subjectId });
   }
 
   private revokeFamily(familyId: string) {
-    return this.prisma.refreshToken.updateMany({
-      where: { familyId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    return this.end({ familyId });
+  }
+
+  /**
+   * Revokes and expires every token matched, already-rotated ones too, so
+   * none of them gets the rotation grace.
+   */
+  private async end(where: Prisma.RefreshTokenWhereInput) {
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.refreshToken.updateMany({
+        where: { ...where, revokedAt: null },
+        data: { revokedAt: now },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { ...where, expiresAt: { gt: now } },
+        data: { expiresAt: now },
+      }),
+    ]);
   }
 
   private async storeRefresh(

@@ -151,7 +151,7 @@ describe('Passenger accounts (e2e)', () => {
 
   describe('sessions', () => {
     it('rotates the refresh token and spots a stolen one', async () => {
-      const { cookie } = await signIn(emailFor('abena'));
+      const { cookie, passenger } = await signIn(emailFor('abena'));
 
       const refreshed = await http()
         .post('/api/v1/auth/refresh')
@@ -161,7 +161,24 @@ describe('Passenger accounts (e2e)', () => {
       const rotated = refreshCookie(refreshed)!.split(';')[0];
       expect(rotated).not.toBe(cookie);
 
-      // The old token again: someone copied it. The whole family dies.
+      // The old token again within seconds: a second tab, or a page left
+      // before the new cookie landed. Still signed in, both ways.
+      const race = await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', cookie)
+        .expect(200);
+      expect(refreshCookie(race)).toBeDefined();
+      await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', rotated)
+        .expect(200);
+
+      // A minute later, the old token again: someone copied it. The whole
+      // family dies.
+      await prisma.refreshToken.updateMany({
+        where: { subjectId: passenger.id, revokedAt: { not: null } },
+        data: { revokedAt: new Date(Date.now() - 60_000) },
+      });
       const replay = await http()
         .post('/api/v1/auth/refresh')
         .set('Cookie', cookie)
@@ -171,6 +188,16 @@ describe('Passenger accounts (e2e)', () => {
         .post('/api/v1/auth/refresh')
         .set('Cookie', rotated)
         .expect(401);
+    });
+
+    it('keeps two tabs signed in when they restore at the same moment', async () => {
+      const { cookie } = await signIn(emailFor('kwesi'));
+      const tabs = await Promise.all(
+        [1, 2].map(() =>
+          http().post('/api/v1/auth/refresh').set('Cookie', cookie),
+        ),
+      );
+      expect(tabs.map((t) => t.status)).toEqual([200, 200]);
     });
 
     it('signs out', async () => {
