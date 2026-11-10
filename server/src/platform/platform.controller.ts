@@ -32,7 +32,7 @@ const ctx = (user: StaffUser, req: Request): PlatformContext => ({
   ip: req.ip,
 });
 
-// No screens yet: use Swagger or an API client (Bruno, Insomnia).
+// Screens: /platform in the web app (bus companies, their admins, stations).
 @ApiTags('Platform admin')
 @ApiBearerAuth()
 @Roles(StaffRole.PLATFORM_ADMIN)

@@ -5,7 +5,9 @@ import { Icon, LogoMark, type IconName } from '@/components/atoms'
 import { NavItem } from '@/components/molecules'
 import { cx } from '@/lib/format'
 
-const items: Array<{ to: string; label: string; short: string; icon: IconName; end?: boolean }> = [
+type MenuItem = { to: string; label: string; short: string; icon: IconName; end?: boolean }
+
+const operatorItems: MenuItem[] = [
   { to: '/operator', label: 'Overview', short: 'Overview', icon: 'overview', end: true },
   { to: '/operator/trips', label: 'Trips', short: 'Trips', icon: 'trips' },
   { to: '/operator/buses', label: 'Buses', short: 'Buses', icon: 'bus' },
@@ -15,6 +17,12 @@ const items: Array<{ to: string; label: string; short: string; icon: IconName; e
   { to: '/operator/reports', label: 'Reports', short: 'Reports', icon: 'reports' },
 ]
 
+/** Seatline's own admins: the bus companies on it and the stations they share. */
+export const platformItems: MenuItem[] = [
+  { to: '/platform', label: 'Bus companies', short: 'Companies', icon: 'bus' },
+  { to: '/platform/stations', label: 'Stations', short: 'Stations', icon: 'routes' },
+]
+
 interface OperatorNavProps {
   operator: string
   title: string
@@ -22,10 +30,12 @@ interface OperatorNavProps {
   context?: string
   /** Phone header shows a back arrow to this page instead of the menu button. */
   back?: { to: string; label: string }
+  /** The operator dashboard's menu unless given, e.g. platformItems. */
+  items?: MenuItem[]
 }
 
 /** Sidebar on desktop, icon rail on tablet, collapsible top bar on phones. */
-export function OperatorNav({ operator, title, context = 'today', back }: OperatorNavProps) {
+export function OperatorNav({ operator, title, context = 'today', back, items = operatorItems }: OperatorNavProps) {
   const [open, setOpen] = useState(false)
   const { signOutStaff } = useAuth()
   const navigate = useNavigate()

@@ -52,7 +52,7 @@ const adminSelect = {
 
 /**
  * The platform itself: the bus companies on it and the stations they share.
- * There are no screens for this yet; use Swagger or an API client.
+ * The web app's /platform pages drive it.
  */
 @Injectable()
 export class PlatformService {

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router'
 import { useAuth } from '@/app/AuthContext'
-import { OperatorNav } from '@/components/organisms'
+import { OperatorNav, platformItems } from '@/components/organisms'
 
 interface OperatorTemplateProps {
   /** Shown in the phone top bar. */
@@ -13,9 +13,11 @@ interface OperatorTemplateProps {
   children: ReactNode
   /** Sticky actions pinned to the bottom on phones, e.g. "New trip". */
   mobileAction?: ReactNode
+  /** Seatline's platform admin pages share this layout with their own menu. */
+  area?: 'operator' | 'platform'
 }
 
-/** Operator admins only: others go to staff sign-in, or to their own console. */
+/** Operator admins only (platform admins for area="platform"): others go to staff sign-in, or to their own console. */
 export function OperatorTemplate(props: OperatorTemplateProps) {
   const { staff, ready } = useAuth()
   const { pathname } = useLocation()
@@ -27,14 +29,15 @@ export function OperatorTemplate(props: OperatorTemplateProps) {
     )
   }
   if (!staff) return <Navigate to={`/staff/signin?role=operator&next=${encodeURIComponent(pathname)}`} replace />
-  if (staff.role !== 'operator') return <Navigate to={staff.home} replace />
-  return <OperatorLayout {...props} operator={staff.operator?.name ?? ''} />
+  const area = props.area ?? 'operator'
+  if (staff.role !== area) return <Navigate to={staff.home} replace />
+  return <OperatorLayout {...props} operator={area === 'platform' ? 'Platform admin' : (staff.operator?.name ?? '')} />
 }
 
-function OperatorLayout({ title, context, back, children, mobileAction, operator }: OperatorTemplateProps & { operator: string }) {
+function OperatorLayout({ title, context, back, children, mobileAction, operator, area }: OperatorTemplateProps & { operator: string }) {
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      <OperatorNav operator={operator} title={title} context={context} back={back} />
+      <OperatorNav operator={operator} title={title} context={context} back={back} items={area === 'platform' ? platformItems : undefined} />
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="flex flex-1 flex-col gap-4 px-4 pb-12 pt-4 md:gap-[18px] md:px-[22px] md:pt-[22px] lg:gap-6 lg:px-7 lg:pt-7">
           {children}

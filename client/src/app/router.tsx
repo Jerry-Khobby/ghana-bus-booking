@@ -77,6 +77,11 @@ export const routes: RouteObject[] = [
       { path: '/operator/agents', lazy: page(() => import('@/pages/operator/AgentsPage'), 'AgentsPage') },
       { path: '/operator/reports', lazy: page(() => import('@/pages/operator/ReportsPage'), 'ReportsPage') },
 
+      // Seatline's own admins
+      { path: '/platform', lazy: page(() => import('@/pages/platform/PlatformOperatorsPage'), 'PlatformOperatorsPage') },
+      { path: '/platform/operators/:operatorId', lazy: page(() => import('@/pages/platform/PlatformOperatorPage'), 'PlatformOperatorPage') },
+      { path: '/platform/stations', lazy: page(() => import('@/pages/platform/PlatformStationsPage'), 'PlatformStationsPage') },
+
       { path: '*', element: <NotFoundPage /> },
     ],
   },

@@ -71,7 +71,8 @@ export function StaffSignInCard({ initialRole = 'agent', onSignIn }: StaffSignIn
       </form>
 
       <p className="m-0 rounded-[10px] bg-canvas px-3.5 py-3 text-sm text-muted">
-        Forgot your password, or need an account? Your operator's admin resets passwords and invites agents from the Agents page.
+        Forgot your password, or need an account? Your operator's admin resets passwords and invites agents from the Agents page. Seatline
+        platform admins sign in as Operator.
       </p>
     </section>
   )
