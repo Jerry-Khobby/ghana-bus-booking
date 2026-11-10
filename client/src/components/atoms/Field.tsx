@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
+import type { InputHTMLAttributes, ReactNode, Ref, TextareaHTMLAttributes } from 'react'
 import { cx } from '@/lib/format'
 
 const control =
@@ -17,6 +17,10 @@ export function TextInput({ inputSize = 'md', mono, className, ...rest }: InputP
       {...rest}
     />
   )
+}
+
+export function TextArea({ className, rows = 4, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea rows={rows} className={cx(control, 'resize-y px-3.5 py-3 leading-snug', className)} {...rest} />
 }
 
 export function Checkbox({ className, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>) {

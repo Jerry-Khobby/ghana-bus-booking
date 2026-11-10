@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { errorMessage, isApiError } from '@/api/client'
-import { createOperator, slugify, usePlatformOperators, useRefreshPlatform, type ApiPlatformOperator } from '@/api/platform'
+import { createOperator, slugify, useApplications, usePlatformOperators, useRefreshPlatform, type ApiPlatformOperator } from '@/api/platform'
 import { Badge, Button, TextInput } from '@/components/atoms'
 import { FormField, InlineFormCard, LoadState, PageHeader } from '@/components/molecules'
 import { ResponsiveTable, type Column } from '@/components/organisms'
@@ -39,9 +39,15 @@ const columns: Column<ApiPlatformOperator>[] = [
 /** /platform: every bus company on Seatline, and adding one. */
 export function PlatformOperatorsPage() {
   const operators = usePlatformOperators()
+  const waiting = useApplications('PENDING').data?.length ?? 0
   return (
     <OperatorTemplate area="platform" title="Bus companies" context="platform">
       <AddCompany />
+      {waiting > 0 && (
+        <p role="status" className="m-0 rounded-xl bg-held px-4 py-3 text-sm text-held-ink">
+          {waiting} compan{waiting === 1 ? 'y has' : 'ies have'} applied to join. <Link to="/platform/applications">Review applications</Link>
+        </p>
+      )}
       {operators.data ? (
         <ResponsiveTable
           label="Bus companies"

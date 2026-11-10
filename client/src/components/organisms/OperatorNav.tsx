@@ -19,7 +19,8 @@ const operatorItems: MenuItem[] = [
 
 /** Seatline's own admins: the bus companies on it and the stations they share. */
 export const platformItems: MenuItem[] = [
-  { to: '/platform', label: 'Bus companies', short: 'Companies', icon: 'bus' },
+  { to: '/platform', label: 'Bus companies', short: 'Companies', icon: 'bus', end: true },
+  { to: '/platform/applications', label: 'Applications', short: 'Applying', icon: 'agents' },
   { to: '/platform/stations', label: 'Stations', short: 'Stations', icon: 'routes' },
 ]
 

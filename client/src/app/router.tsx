@@ -55,6 +55,7 @@ export const routes: RouteObject[] = [
       { path: '/ticket/:code', element: <TicketPage /> },
       { path: '/tickets', element: <MyTicketsPage /> },
       { path: '/signin', element: <SignInPage /> },
+      { path: '/join', lazy: page(() => import('@/pages/JoinPage'), 'JoinPage') },
       { path: '/staff/signin', lazy: page(() => import('@/pages/StaffSignInPage'), 'StaffSignInPage') },
       // Links in invite and password-reset emails
       { path: '/staff/accept', lazy: page(() => import('@/pages/StaffPasswordPage'), 'StaffAcceptPage') },
@@ -80,6 +81,7 @@ export const routes: RouteObject[] = [
       // Seatline's own admins
       { path: '/platform', lazy: page(() => import('@/pages/platform/PlatformOperatorsPage'), 'PlatformOperatorsPage') },
       { path: '/platform/operators/:operatorId', lazy: page(() => import('@/pages/platform/PlatformOperatorPage'), 'PlatformOperatorPage') },
+      { path: '/platform/applications', lazy: page(() => import('@/pages/platform/PlatformApplicationsPage'), 'PlatformApplicationsPage') },
       { path: '/platform/stations', lazy: page(() => import('@/pages/platform/PlatformStationsPage'), 'PlatformStationsPage') },
 
       { path: '*', element: <NotFoundPage /> },

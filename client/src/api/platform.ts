@@ -83,6 +83,51 @@ export const createStation = (body: { name: string; city: string; region: string
 export const updateStation = (id: string, body: Partial<Omit<ApiPlatformStation, 'id'>>) =>
   api<ApiPlatformStation>(`/platform/stations/${id}`, { method: 'PATCH', body })
 
+// ─── Join Seatline applications ──────────────────────────────────────────────
+
+export type ApplicationStatus = 'PENDING' | 'APPROVED' | 'DECLINED'
+
+export interface ApiApplication {
+  id: string
+  companyName: string
+  contactName: string
+  email: string
+  phone: string
+  city: string
+  fleetSize: number | null
+  message: string | null
+  status: ApplicationStatus
+  declineReason: string | null
+  reviewedAt: string | null
+  createdAt: string
+  operator: { id: string; name: string; slug: string } | null
+}
+
+export function useApplications(status: ApplicationStatus) {
+  return useQuery({
+    queryKey: [...platformKeys.all, 'applications', status],
+    queryFn: ({ signal }) => api<ApiApplication[]>(`/platform/applications?status=${status}`, { signal }),
+  })
+}
+
+/** Creates the company and invites the contact as its admin. */
+export const approveApplication = (id: string, slug: string) =>
+  api<{ operator: ApiPlatformOperator; admin: ApiOperatorAdmin }>(`/platform/applications/${id}/approve`, { method: 'POST', body: { slug } })
+export const declineApplication = (id: string, reason?: string) =>
+  api<{ declined: true }>(`/platform/applications/${id}/decline`, { method: 'POST', body: reason ? { reason } : {} })
+
+/** The public "Join Seatline" form. The answer is the same whatever happens, so it can't be used to probe. */
+export const applyToJoin = (body: {
+  companyName: string
+  contactName: string
+  email: string
+  phone: string
+  city: string
+  fleetSize?: number
+  message?: string
+  website?: string
+}) => api<{ received: true }>('/applications', { method: 'POST', body })
+
 export function useRefreshPlatform() {
   const queryClient = useQueryClient()
   return () => queryClient.invalidateQueries({ queryKey: platformKeys.all })
