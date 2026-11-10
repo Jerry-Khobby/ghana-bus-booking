@@ -56,6 +56,9 @@ export const routes: RouteObject[] = [
       { path: '/tickets', element: <MyTicketsPage /> },
       { path: '/signin', element: <SignInPage /> },
       { path: '/staff/signin', lazy: page(() => import('@/pages/StaffSignInPage'), 'StaffSignInPage') },
+      // Links in invite and password-reset emails
+      { path: '/staff/accept', lazy: page(() => import('@/pages/StaffPasswordPage'), 'StaffAcceptPage') },
+      { path: '/staff/reset', lazy: page(() => import('@/pages/StaffPasswordPage'), 'StaffResetPage') },
 
       // Station agent
       { path: '/agent', lazy: page(() => import('@/pages/AgentConsolePage'), 'AgentConsolePage') },
