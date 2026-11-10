@@ -157,8 +157,8 @@ Because the browser only ever talks to the Vercel site, the sign-in cookie is fi
 - [x] Camera QR scanning for agents, with one-time boarding
 - [x] Sign-in: email codes for passengers, password accounts for staff
 - [x] Docker for the API; deployed on Render with Neon
-- [ ] Email delivery over HTTPS (Render's free plan blocks SMTP)
-- [ ] Screens for the platform admin (operators and shared stations)
+- [x] Email delivery over HTTPS (Render's free plan blocks SMTP)
+- [x] Screens for the platform admin: operators, applications to join, stations, suspend and delete
 - [ ] SMS tickets
 
 ## Repository layout

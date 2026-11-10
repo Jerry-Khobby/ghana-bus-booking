@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { errorMessage, isApiError } from '@/api/client'
 import { createOperator, slugify, useApplications, usePlatformOperators, useRefreshPlatform, type ApiPlatformOperator } from '@/api/platform'
 import { Badge, Button, TextInput } from '@/components/atoms'
@@ -40,9 +40,15 @@ const columns: Column<ApiPlatformOperator>[] = [
 export function PlatformOperatorsPage() {
   const operators = usePlatformOperators()
   const waiting = useApplications('PENDING').data?.length ?? 0
+  const deleted = useSearchParams()[0].get('deleted')
   return (
     <OperatorTemplate area="platform" title="Bus companies" context="platform">
       <AddCompany />
+      {deleted && (
+        <p role="status" className="m-0 rounded-xl bg-brand-tint px-4 py-3 text-sm text-brand-ink">
+          {deleted} was deleted from Seatline.
+        </p>
+      )}
       {waiting > 0 && (
         <p role="status" className="m-0 rounded-xl bg-held px-4 py-3 text-sm text-held-ink">
           {waiting} compan{waiting === 1 ? 'y has' : 'ies have'} applied to join. <Link to="/platform/applications">Review applications</Link>

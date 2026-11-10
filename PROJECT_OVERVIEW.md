@@ -45,7 +45,9 @@ Payments run on Paystack's test mode, so no real money moves.
 - Cancel a trip: online buyers are refunded automatically, and cash buyers are listed for repayment.
 
 ### Platform admin
-- Add bus operators, and send recovery sign-in links to operator admins.
+- Add bus operators, review applications from the Join Seatline page, and send recovery sign-in links to operator admins.
+- Suspend an operator: its buses leave search, every sale stops and its staff are signed out at once. Its upcoming trips can be cancelled in the same step, with refunds.
+- Delete an operator only if it never had a booking, so tickets and payment records always stay for refunds and the books.
 
 ---
 

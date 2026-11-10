@@ -72,6 +72,37 @@ export type OperatorBody = {
 export const createOperator = (body: OperatorBody) => api<ApiPlatformOperator>('/platform/operators', { method: 'POST', body })
 export const updateOperator = (id: string, body: Partial<Omit<OperatorBody, 'slug'>> & { status?: ApiPlatformOperator['status'] }) =>
   api<ApiPlatformOperator>(`/platform/operators/${id}`, { method: 'PATCH', body })
+/** What suspending or deleting a company would touch. */
+export interface ApiOperatorImpact {
+  upcomingTrips: number
+  ticketsOnUpcomingTrips: number
+  /** Every booking it ever had; only a company with none can be deleted. */
+  bookings: number
+  staff: number
+  deletable: boolean
+}
+
+export function useOperatorImpact(operatorId: string) {
+  return useQuery({
+    queryKey: [...platformKeys.all, 'impact', operatorId],
+    queryFn: ({ signal }) => api<ApiOperatorImpact>(`/platform/operators/${operatorId}/impact`, { signal }),
+  })
+}
+
+export interface ApiSuspendResult {
+  operator: ApiPlatformOperator
+  tripsCancelled: number
+  refundsPending: number
+  passengersEmailed: number
+  cashToRepay: { code: string; seatLabel: string; passengerName: string | null; amountPesewas: number; soldBy: string | null }[]
+}
+
+/** Suspends the company (search, sales and staff sign-in stop), optionally cancelling its upcoming trips. */
+export const suspendOperator = (id: string, body: { cancelTrips: boolean; reason?: string }) =>
+  api<ApiSuspendResult>(`/platform/operators/${id}/suspend`, { method: 'POST', body })
+/** Only for a company that never had a booking. */
+export const deleteOperator = (id: string) => api<{ deleted: true }>(`/platform/operators/${id}`, { method: 'DELETE' })
+
 export const inviteOperatorAdmin = (operatorId: string, body: { name: string; email: string }) =>
   api<ApiOperatorAdmin>(`/platform/operators/${operatorId}/admins`, { method: 'POST', body })
 /** A new invite if they haven't joined, otherwise a password reset link. */
