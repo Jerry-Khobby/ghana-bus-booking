@@ -3,7 +3,7 @@ import { useDeviceTickets, useMyTickets } from '@/api/tickets'
 import { maskEmail, useAuth } from '@/app/AuthContext'
 import { useBooking } from '@/app/BookingContext'
 import { ButtonLink, Card, Heading } from '@/components/atoms'
-import { PageHeader, SegmentedControl } from '@/components/molecules'
+import { LoadState, PageHeader, SegmentedControl } from '@/components/molecules'
 import { MyTicketCard, isUpcoming } from '@/components/organisms'
 import { PublicTemplate } from '@/components/templates'
 
@@ -75,9 +75,7 @@ export function MyTicketsPage() {
         </div>
 
         {loading ? (
-          <p role="status" className="m-0 p-8 text-center text-muted">
-            Loading your tickets…
-          </p>
+          <LoadState pending label="Loading your tickets…" />
         ) : failed ? (
           <p role="alert" className="m-0 rounded-2xl border border-dashed border-line-strong p-8 text-center text-muted">
             We could not load your tickets. Pull to refresh or try again shortly.

@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { errorMessage } from '@/api/client'
-import { Icon } from '@/components/atoms'
+import { useServerStatus } from '@/api/serverStatus'
+import { Icon, Spinner } from '@/components/atoms'
 import { cx } from '@/lib/format'
 
 /** After this long, say why it's slow: the free server sleeps when idle. */
 const SLOW_MS = 6_000
 
 /**
- * "Loading…" that explains itself when it runs long, or the error with a
- * Try again button. `tone="dark"` sits on the green ticket page.
+ * A skeleton while loading, which explains itself when the server is waking
+ * or it runs long, or the error with a Try again button. `tone="dark"` sits
+ * on the green ticket page.
  */
 export function LoadState({
   pending,
@@ -25,6 +27,7 @@ export function LoadState({
   tone?: 'light' | 'dark'
   className?: string
 }) {
+  const server = useServerStatus()
   const [slow, setSlow] = useState(false)
   useEffect(() => {
     if (!pending) return
@@ -35,10 +38,21 @@ export function LoadState({
 
   const muted = tone === 'dark' ? 'text-on-brand' : 'text-muted'
   if (pending) {
+    // Grey bars where the content will be, so the page holds its shape
+    const bar = cx('rounded-lg motion-safe:animate-pulse', tone === 'dark' ? 'bg-white/15' : 'bg-sunken')
     return (
-      <div role="status" className={cx('flex flex-col items-center gap-1.5 p-6 text-center', className)}>
-        <p className={cx('m-0 font-semibold', tone === 'dark' && 'text-white')}>{label}</p>
-        {slow && <p className={cx('m-0 text-sm', muted)}>Still working: the server may be waking up. This can take up to a minute.</p>}
+      <div role="status" aria-busy="true" className={cx('flex flex-col gap-3 py-2', className)}>
+        <span className="sr-only">{label}</span>
+        <div className={cx(bar, 'h-5 w-2/5')} />
+        <div className={cx(bar, 'h-14 w-full')} />
+        <div className={cx(bar, 'h-14 w-full')} />
+        <div className={cx(bar, 'h-14 w-4/5')} />
+        {(slow || server === 'waking') && (
+          <p className={cx('m-0 flex items-center gap-2 text-sm', muted)}>
+            <Spinner size={14} tone={tone === 'dark' ? 'light' : 'brand'} />
+            Starting Seatline’s server. It sleeps when idle, so this can take up to a minute.
+          </p>
+        )}
       </div>
     )
   }

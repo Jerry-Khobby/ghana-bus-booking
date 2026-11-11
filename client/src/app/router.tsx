@@ -1,5 +1,6 @@
 import { useEffect, type ComponentType } from 'react'
 import { Outlet, ScrollRestoration, useLocation, type RouteObject } from 'react-router'
+import { AppLoading, ServerBanner } from '@/components/organisms'
 import { ErrorPage } from '@/pages/ErrorPage'
 import { HomePage } from '@/pages/HomePage'
 import { MyTicketsPage } from '@/pages/MyTicketsPage'
@@ -24,6 +25,7 @@ function Root() {
   return (
     <>
       <ScrollRestoration />
+      <ServerBanner />
       <Outlet />
     </>
   )
@@ -42,6 +44,8 @@ export const routes: RouteObject[] = [
   {
     element: <Root />,
     errorElement: <ErrorPage />,
+    // Opening a staff page directly: shown while its code downloads
+    hydrateFallbackElement: <AppLoading />,
     children: [
       // Passenger
       { path: '/', element: <HomePage /> },

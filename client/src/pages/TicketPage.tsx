@@ -4,6 +4,7 @@ import { getTicket } from '@/api/booking'
 import { errorMessage, isApiError } from '@/api/client'
 import { useBooking } from '@/app/BookingContext'
 import { Button, ButtonLink, StatusMark } from '@/components/atoms'
+import { LoadState } from '@/components/molecules'
 import { TicketCard } from '@/components/organisms'
 import { PassTemplate } from '@/components/templates'
 import { plural } from '@/lib/format'
@@ -44,9 +45,7 @@ export function TicketPage() {
   if (results.some((r) => r.isPending)) {
     return (
       <PassTemplate tone="brand">
-        <p role="status" className="m-0 py-16 text-center text-white">
-          Loading your ticket…
-        </p>
+        <LoadState pending tone="dark" label="Loading your ticket…" className="py-8" />
       </PassTemplate>
     )
   }

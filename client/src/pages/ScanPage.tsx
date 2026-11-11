@@ -4,6 +4,7 @@ import { boardTicket, scanTicket, type ApiScan } from '@/api/agent'
 import { errorMessage } from '@/api/client'
 import { useStation } from '@/app/StationContext'
 import { Badge, Button, TextInput } from '@/components/atoms'
+import { LoadState } from '@/components/molecules'
 import { InvalidScan, ScanViewfinder, ValidScan } from '@/components/organisms'
 import { PassTemplate, RequireAgent } from '@/components/templates'
 
@@ -80,10 +81,16 @@ function Scanner() {
         {data && <Badge tone="chip">Bay {data.bay.number}{trip ? ` · ${trip.bus.plate}` : ''}</Badge>}
       </div>
 
-      {!trip ? (
-        <p className="m-0 rounded-xl bg-ink-soft p-4 text-on-dark">
-          {data ? 'No bus is loading at this bay, so there is nothing to board.' : 'Loading your bay…'}
-        </p>
+      {!data ? (
+        <LoadState
+          pending={consoleQuery.isPending}
+          error={consoleQuery.error}
+          onRetry={() => void consoleQuery.refetch()}
+          tone="dark"
+          label="Loading your bay…"
+        />
+      ) : !trip ? (
+        <p className="m-0 rounded-xl bg-ink-soft p-4 text-on-dark">No bus is loading at this bay, so there is nothing to board.</p>
       ) : (
         <>
           <ScanViewfinder paused={paused} onRead={(qrPayload) => void check({ qrPayload })} />

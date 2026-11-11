@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router'
 import { useAuth } from '@/app/AuthContext'
-import { OperatorNav, platformItems } from '@/components/organisms'
+import { AppLoading, OperatorNav, platformItems } from '@/components/organisms'
 
 interface OperatorTemplateProps {
   /** Shown in the phone top bar. */
@@ -21,13 +21,7 @@ interface OperatorTemplateProps {
 export function OperatorTemplate(props: OperatorTemplateProps) {
   const { staff, ready } = useAuth()
   const { pathname } = useLocation()
-  if (!ready) {
-    return (
-      <p role="status" className="p-16 text-center text-muted">
-        Checking your sign-in…
-      </p>
-    )
-  }
+  if (!ready) return <AppLoading label="Checking your sign-in…" />
   if (!staff) return <Navigate to={`/staff/signin?role=operator&next=${encodeURIComponent(pathname)}`} replace />
   const area = props.area ?? 'operator'
   if (staff.role !== area) return <Navigate to={staff.home} replace />

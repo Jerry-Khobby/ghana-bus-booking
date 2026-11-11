@@ -8,6 +8,8 @@
  * calls VITE_API_URL, or the same site when the web host forwards /api.
  */
 
+import { markServerUp } from './serverStatus'
+
 const ORIGIN = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 export const API_BASE = `${ORIGIN}/api/v1`
 
@@ -222,7 +224,10 @@ async function request<T>(path: string, options: RequestOptions): Promise<T> {
     throw new ApiError(0, 'NETWORK', NETWORK_MESSAGE)
   }
 
-  if (res.status === 204) return undefined as T
+  if (res.status === 204) {
+    markServerUp()
+    return undefined as T
+  }
   let text: string
   try {
     text = await res.text()
@@ -231,6 +236,8 @@ async function request<T>(path: string, options: RequestOptions): Promise<T> {
     throw new ApiError(0, 'NETWORK', NETWORK_MESSAGE)
   }
   const data = text ? safeJson(text) : undefined
+  // Our own JSON, success or error, means the server is up (not a proxy page)
+  if (res.ok || (data as { error?: unknown } | undefined)?.error) markServerUp()
   if (!res.ok) {
     const error = (data as { error?: { code: string; message: string; details?: Record<string, unknown>; requestId?: string } })
       ?.error

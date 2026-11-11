@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router'
 import { useAuth } from '@/app/AuthContext'
 import { useStation } from '@/app/StationContext'
-import { AgentHeader } from '@/components/organisms'
+import { AgentHeader, AppLoading } from '@/components/organisms'
 import { cx } from '@/lib/format'
 
 interface AgentTemplateProps {
@@ -17,13 +17,7 @@ interface AgentTemplateProps {
 export function RequireAgent({ children }: { children: ReactNode }) {
   const { staff, ready } = useAuth()
   const { pathname } = useLocation()
-  if (!ready) {
-    return (
-      <p role="status" className="p-16 text-center text-muted">
-        Checking your sign-in…
-      </p>
-    )
-  }
+  if (!ready) return <AppLoading label="Checking your sign-in…" />
   if (!staff || staff.role === 'platform') {
     return <Navigate to={`/staff/signin?role=agent&next=${encodeURIComponent(pathname)}`} replace />
   }
